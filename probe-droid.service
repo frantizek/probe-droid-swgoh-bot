@@ -1,0 +1,25 @@
+[Unit]
+Description=Probe Droid - Discord bot for SWGOH
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/bots/discord/probe-droid-swgoh-bot
+ExecStart=/home/ubuntu/.local/bin/uv run python bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=probe-droid
+
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:/home/ubuntu/.local/bin"
+Environment="PYTHONPATH=/opt/bots/discord/probe-droid-swgoh-bot"
+
+RuntimeDirectory=probe-droid
+LogsDirectory=probe-droid
+
+[Install]
+WantedBy=multi-user.target
