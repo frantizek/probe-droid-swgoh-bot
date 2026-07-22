@@ -391,11 +391,6 @@ async def set_bt_date(ctx, *, fecha: str = None):
         await ctx.send("⚠️ Formato inválido. Usa YYYY-MM-DD\nEjemplo: `!set_bt_date 2026-07-06`")
         return
 
-    today = datetime.now(timezone.utc).date()
-    if bt_date < today:
-        await ctx.send(f"⚠️ La fecha debe ser posterior a hoy.\nHoy: {today.isoformat()}")
-        return
-
     if bt_date.weekday() != 0:
         next_monday = bt_date + timedelta(days=(7 - bt_date.weekday()) % 7)
         await ctx.send(
