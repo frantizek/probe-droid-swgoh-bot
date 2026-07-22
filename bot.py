@@ -218,10 +218,13 @@ def clean_html(raw_html: str) -> str:
     return text[:300] + "..." if len(text) > 300 else text
 
 
-def is_admin(ctx) -> bool:
+def is_authorized(ctx) -> bool:
     if ctx.author.id in ADMIN_IDS:
         return True
-    if ctx.guild and ctx.author.guild_permissions.administrator:
+    if not ctx.guild:
+        return False
+    perms = ctx.author.guild_permissions
+    if perms.administrator or perms.manage_guild or perms.ban_members or perms.kick_members:
         return True
     return False
 
@@ -370,7 +373,7 @@ async def estado(ctx):
 
 @bot.command()
 async def set_bt_date(ctx, *, fecha: str = None):
-    if not is_admin(ctx):
+    if not is_authorized(ctx):
         await ctx.send("🚫 No tienes permisos para usar este comando.")
         return
 
@@ -411,7 +414,7 @@ async def set_bt_date(ctx, *, fecha: str = None):
 @bot.command()
 async def orden(ctx, fase: str = None):
     """Publica la orden de una fase específica o la fase actual si no se especifica."""
-    if not is_admin(ctx):
+    if not is_authorized(ctx):
         await ctx.send("🚫 No tienes permisos para usar este comando.")
         return
 
