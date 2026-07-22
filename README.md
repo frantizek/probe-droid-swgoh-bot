@@ -70,7 +70,7 @@ MONGODB_DB_NAME=orders_manager
 | `BOT_TOKEN` | Sí | Token del bot de Discord |
 | `CHANNEL_ID` | Sí | Canal para alertas RSS de códigos |
 | `GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes BT (default: mismo que CHANNEL_ID) |
-| `ADMIN_IDS` | Sí (para BT) | IDs de Discord de administradores separados por coma |
+| `ADMIN_IDS` | No | IDs de Discord adicionales (opcional, por defecto admins del servidor) |
 | `MONGODB_URI` | Sí (para BT) | URI de conexión a MongoDB |
 | `MONGODB_DB_NAME` | No | Nombre de la base de datos (default: `orders_manager`) |
 
@@ -87,11 +87,12 @@ MONGODB_DB_NAME=orders_manager
 1. En Discord, habilita el "Developer Mode" (Configuración > Avanzado > Modo Desarrollador)
 2. Haz clic derecho en el canal > "Copiar ID del canal"
 
-### Obtener tu ID de Discord
+### Obtener tu ID de Discord (opcional)
 
+Si no configuras `ADMIN_IDS`, cualquier usuario con permiso **Administrador** en el servidor puede usar los comandos admin. Para añadir un ID específico:
 1. En Discord con Modo Desarrollador activado, haz clic derecho en tu perfil
 2. "Copiar ID"
-3. Ese número va en `ADMIN_IDS`
+3. Añádelo a `ADMIN_IDS` separado por coma
 
 ## Comandos
 

@@ -219,7 +219,11 @@ def clean_html(raw_html: str) -> str:
 
 
 def is_admin(ctx) -> bool:
-    return ctx.author.id in ADMIN_IDS
+    if ctx.author.id in ADMIN_IDS:
+        return True
+    if ctx.guild and ctx.author.guild_permissions.administrator:
+        return True
+    return False
 
 
 intents = discord.Intents.default()
