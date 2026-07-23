@@ -553,7 +553,7 @@ async def _orden_cmd(ctx, event_type: str, fase: str | None):
 
 
 @bot.command()
-async def orden(ctx, fase: str = None):
+async def orden_bt(ctx, fase: str = None):
     await _orden_cmd(ctx, "bt", fase)
 
 
