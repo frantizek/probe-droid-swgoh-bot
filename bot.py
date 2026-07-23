@@ -348,7 +348,7 @@ async def on_ready():
 async def estado(ctx):
     embed = discord.Embed(
         title="Sonda Droid SWGoH",
-        description="Bot operativo con filtros anti-AllyCode y publicación de órdenes BT.",
+        description="Bot operativo con filtros anti-AllyCode, órdenes BT y soporte para GT.",
         color=discord.Color.green(),
         timestamp=datetime.now(timezone.utc),
     )
@@ -366,6 +366,12 @@ async def estado(ctx):
     else:
         bt_info = "No configurada"
     embed.add_field(name="BT Config", value=bt_info, inline=False)
+
+    embed.add_field(
+        name="Guerra Territorial (GT)",
+        value=f"Próximamente en <#{GT_GUILD_ORDERS_CHANNEL_ID}>",
+        inline=False,
+    )
 
     await ctx.send(embed=embed)
 
