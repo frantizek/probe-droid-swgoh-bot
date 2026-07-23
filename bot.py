@@ -106,6 +106,18 @@ def init_db():
     conn.execute("CREATE TABLE IF NOT EXISTS seen_posts (post_id TEXT PRIMARY KEY)")
     conn.execute("CREATE TABLE IF NOT EXISTS bt_config (id INTEGER PRIMARY KEY, start_date TEXT, updated_at TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS event_dates (event_type TEXT PRIMARY KEY, start_date TEXT, updated_at TEXT)")
+
+    # Migrar datos viejos de bt_config a event_dates si existen
+    row = conn.execute("SELECT start_date FROM bt_config WHERE id = 1").fetchone()
+    if row:
+        existing = conn.execute("SELECT 1 FROM event_dates WHERE event_type = 'bt'").fetchone()
+        if not existing:
+            conn.execute(
+                "INSERT INTO event_dates (event_type, start_date, updated_at) VALUES ('bt', ?, datetime('now'))",
+                (row[0],),
+            )
+            log.info("BT start date migrada a event_dates: %s", row[0])
+
     conn.commit()
     conn.close()
 
