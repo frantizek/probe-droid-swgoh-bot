@@ -141,15 +141,7 @@ La estructura de datos para GT está definida con 4 fases y un script para inici
 | 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
 | 3 | `ordenes_gt_cierre` | Cierre y resultados |
 
-Para crear los documentos vacíos en MongoDB:
-
-```bash
-uv run python scripts/init_gt_orders.py
-```
-
-Luego edita el `content` de cada uno directamente en MongoDB Atlas.
-
-> La publicación automática de GT será implementada próximamente.
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT será implementada próximamente.
 
 ## Despliegue en Oracle Cloud (Free Tier)
 
@@ -272,8 +264,6 @@ probe-droid-swgoh-bot/
 ├── .env.example        # Plantilla de variables de entorno
 ├── bot_data.db         # Base de datos SQLite (auto-generado)
 ├── bot.log             # Log del bot (auto-generado)
-├── scripts/
-│   └── init_gt_orders.py  # Inicializa documentos GT en MongoDB
 └── .github/
     ├── ISSUE_TEMPLATE/ # Plantillas para issues
     └── pull_request_template.md
