@@ -10,6 +10,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
+- **Soporte GT**: Estructura de datos preparada para Guerra Territorial (4 fases: signup, defensas, ataque, cierre)
 - **Comandos admin**: `!set_bt_date` y `!orden` para gestión de BT
 
 ## Fuentes Monitorizadas
@@ -22,7 +23,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - Python 3.12+
 - Discord Bot Token
 - Cuenta de Discord con permisos para crear un bot
-- MongoDB Atlas (para órdenes BT)
+- MongoDB Atlas (para órdenes de gremio)
 
 ## Instalación
 
@@ -73,7 +74,7 @@ MONGODB_DB_NAME=orders_manager
 | `CODE_ALERTS_CHANNEL_ID` | No | Canal para alertas RSS de códigos (default: GENERAL_CHANNEL_ID) |
 | `BT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de BT (default: GENERAL_CHANNEL_ID) |
 | `GT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de GT (default: GENERAL_CHANNEL_ID) |
-| `MONGODB_URI` | Sí (para BT) | URI de conexión a MongoDB |
+| `MONGODB_URI` | Sí | URI de conexión a MongoDB |
 | `MONGODB_DB_NAME` | No | Nombre de la base de datos (default: `orders_manager`) |
 
 ### Obtener el Token del Bot
@@ -128,6 +129,27 @@ El bot publica automáticamente las órdenes de BT cada día a las **17:00 UTC**
 Un admin puede forzar la publicación con:
 - `!orden` — publica la fase actual
 - `!orden 3` — publica la fase 3 específica
+
+## Guerra Territorial (GT) — Preparación
+
+La estructura de datos para GT está definida con 4 fases y un script para inicializar los documentos en MongoDB:
+
+| Fase | template_id | Descripción |
+|:----:|-------------|-------------|
+| 0 | `ordenes_gt_signup` | Apuntarse a la batalla |
+| 1 | `ordenes_gt_defensas` | Instrucciones de defensa por zona |
+| 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
+| 3 | `ordenes_gt_cierre` | Cierre y resultados |
+
+Para crear los documentos vacíos en MongoDB:
+
+```bash
+uv run python scripts/init_gt_orders.py
+```
+
+Luego edita el `content` de cada uno directamente en MongoDB Atlas.
+
+> La publicación automática de GT será implementada próximamente.
 
 ## Despliegue en Oracle Cloud (Free Tier)
 
@@ -223,18 +245,6 @@ git pull
 sudo systemctl restart probe-droid
 ```
 
-### Cambiar de rama para probar features
-
-```bash
-cd /opt/bots/discord/probe-droid-swgoh-bot
-git fetch origin
-git checkout feat/guild-orders-bt
-# Añadir nuevas variables al .env si es necesario
-nano .env
-sudo systemctl restart probe-droid
-sudo journalctl -u probe-droid -f --since "1 min ago"
-```
-
 ## Sistema de Filtros
 
 El bot utiliza un sistema de 3 capas para filtrar posts:
@@ -262,6 +272,8 @@ probe-droid-swgoh-bot/
 ├── .env.example        # Plantilla de variables de entorno
 ├── bot_data.db         # Base de datos SQLite (auto-generado)
 ├── bot.log             # Log del bot (auto-generado)
+├── scripts/
+│   └── init_gt_orders.py  # Inicializa documentos GT en MongoDB
 └── .github/
     ├── ISSUE_TEMPLATE/ # Plantillas para issues
     └── pull_request_template.md
