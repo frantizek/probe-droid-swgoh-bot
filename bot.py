@@ -28,9 +28,10 @@ load_dotenv()
 # CONFIGURACIÓN
 # ─────────────────────────────────────────────
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
-GUILD_ORDERS_CHANNEL_ID = int(os.getenv("GUILD_ORDERS_CHANNEL_ID", str(CHANNEL_ID)))
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip().isdigit()]
+GENERAL_CHANNEL_ID = int(os.getenv("GENERAL_CHANNEL_ID", "0"))
+CODE_ALERTS_CHANNEL_ID = int(os.getenv("CODE_ALERTS_CHANNEL_ID", str(GENERAL_CHANNEL_ID)))
+BT_GUILD_ORDERS_CHANNEL_ID = int(os.getenv("BT_GUILD_ORDERS_CHANNEL_ID", str(GENERAL_CHANNEL_ID)))
+GT_GUILD_ORDERS_CHANNEL_ID = int(os.getenv("GT_GUILD_ORDERS_CHANNEL_ID", str(GENERAL_CHANNEL_ID)))
 CHECK_EVERY = 15
 BT_POST_HOUR = 17
 BT_POST_MINUTE = 0
@@ -219,8 +220,6 @@ def clean_html(raw_html: str) -> str:
 
 
 def is_authorized(ctx) -> bool:
-    if ctx.author.id in ADMIN_IDS:
-        return True
     if not ctx.guild:
         return False
     perms = ctx.author.guild_permissions
@@ -242,9 +241,9 @@ async def daily_bt_order():
     now = datetime.now(ZoneInfo(BT_POST_TIMEZONE))
     log.info("Ejecutando daily_bt_order a las %s", now.strftime("%H:%M UTC"))
 
-    channel = bot.get_channel(GUILD_ORDERS_CHANNEL_ID)
+    channel = bot.get_channel(BT_GUILD_ORDERS_CHANNEL_ID)
     if not channel:
-        log.warning("Canal de órdenes BT no encontrado (GUILD_ORDERS_CHANNEL_ID=%s)", GUILD_ORDERS_CHANNEL_ID)
+        log.warning("Canal de órdenes BT no encontrado (BT_GUILD_ORDERS_CHANNEL_ID=%s)", BT_GUILD_ORDERS_CHANNEL_ID)
         return
 
     phase = get_bt_phase()
@@ -274,7 +273,7 @@ async def daily_bt_order():
     embed.set_footer(text="Sonda Droid • Órdenes de Batalla Territorial")
 
     await channel.send(embed=embed)
-    log.info("Orden BT fase %s publicada en canal %s", phase, GUILD_ORDERS_CHANNEL_ID)
+    log.info("Orden BT fase %s publicada en canal %s", phase, BT_GUILD_ORDERS_CHANNEL_ID)
 
 
 # ─────────────────────────────────────────────
@@ -282,7 +281,7 @@ async def daily_bt_order():
 # ─────────────────────────────────────────────
 @tasks.loop(minutes=CHECK_EVERY)
 async def scan_feeds():
-    channel = bot.get_channel(CHANNEL_ID)
+    channel = bot.get_channel(CODE_ALERTS_CHANNEL_ID)
     if not channel:
         return
 
@@ -353,8 +352,8 @@ async def estado(ctx):
         color=discord.Color.green(),
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(name="RSS Codes", value=f"Cada {CHECK_EVERY} min en <#{CHANNEL_ID}>", inline=False)
-    embed.add_field(name="Órdenes BT", value=f"Diario {BT_POST_HOUR:02d}:{BT_POST_MINUTE:02d} UTC en <#{GUILD_ORDERS_CHANNEL_ID}>", inline=False)
+    embed.add_field(name="RSS Codes", value=f"Cada {CHECK_EVERY} min en <#{CODE_ALERTS_CHANNEL_ID}>", inline=False)
+    embed.add_field(name="Órdenes BT", value=f"Diario {BT_POST_HOUR:02d}:{BT_POST_MINUTE:02d} UTC en <#{BT_GUILD_ORDERS_CHANNEL_ID}>", inline=False)
 
     bt_start = get_bt_start_date()
     phase = get_bt_phase()

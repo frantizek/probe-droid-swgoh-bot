@@ -56,9 +56,10 @@ Crear archivo `.env` en la raíz del proyecto:
 
 ```env
 BOT_TOKEN=tu_token_de_bot_aqui
-CHANNEL_ID=id_del_canal_de_discord
-GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_bt
-ADMIN_IDS=tu_id_de_discord
+GENERAL_CHANNEL_ID=id_del_canal_general
+CODE_ALERTS_CHANNEL_ID=id_del_canal_de_codigos
+BT_GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_bt
+GT_GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_gt
 MONGODB_URI=tu_mongodb_uri
 MONGODB_DB_NAME=orders_manager
 ```
@@ -68,9 +69,10 @@ MONGODB_DB_NAME=orders_manager
 | Variable | Requerido | Descripción |
 |----------|-----------|-------------|
 | `BOT_TOKEN` | Sí | Token del bot de Discord |
-| `CHANNEL_ID` | Sí | Canal para alertas RSS de códigos |
-| `GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes BT (default: mismo que CHANNEL_ID) |
-| `ADMIN_IDS` | No | IDs de Discord adicionales (opcional, por defecto admins del servidor) |
+| `GENERAL_CHANNEL_ID` | No | Canal por defecto (fallback para los demás) |
+| `CODE_ALERTS_CHANNEL_ID` | No | Canal para alertas RSS de códigos (default: GENERAL_CHANNEL_ID) |
+| `BT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de BT (default: GENERAL_CHANNEL_ID) |
+| `GT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de GT (default: GENERAL_CHANNEL_ID) |
 | `MONGODB_URI` | Sí (para BT) | URI de conexión a MongoDB |
 | `MONGODB_DB_NAME` | No | Nombre de la base de datos (default: `orders_manager`) |
 
@@ -87,12 +89,9 @@ MONGODB_DB_NAME=orders_manager
 1. En Discord, habilita el "Developer Mode" (Configuración > Avanzado > Modo Desarrollador)
 2. Haz clic derecho en el canal > "Copiar ID del canal"
 
-### Obtener tu ID de Discord (opcional)
+### Autorización
 
-Si no configuras `ADMIN_IDS`, cualquier usuario con permiso **Administrador** en el servidor puede usar los comandos admin. Para añadir un ID específico:
-1. En Discord con Modo Desarrollador activado, haz clic derecho en tu perfil
-2. "Copiar ID"
-3. Añádelo a `ADMIN_IDS` separado por coma
+Los comandos admin (`!set_bt_date`, `!orden`) están disponibles para usuarios con los siguientes permisos en el servidor: **Administrador**, **Gestionar Servidor**, **Expulsar Miembros** o **Banear Miembros** (cubren perfiles de admin y oficial).
 
 ## Comandos
 
