@@ -562,5 +562,48 @@ async def orden_gt(ctx, fase: str = None):
     await _orden_cmd(ctx, "gt", fase)
 
 
+@bot.command()
+async def ayuda(ctx):
+    if not is_authorized(ctx):
+        await ctx.send("🚫 No tienes permisos para usar este comando.")
+        return
+
+    embed = discord.Embed(
+        title="Sonda Droid — Comandos disponibles",
+        description="Bot de códigos RSS y órdenes de gremio para SWGoH.",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    embed.add_field(
+        name="📡 Generales",
+        value="`!estado` — Estado del bot, BT y GT\n`!ayuda` — Esta ayuda",
+        inline=False,
+    )
+
+    embed.add_field(
+        name="🎁 Códigos RSS",
+        value=f"Publicación automática cada {CHECK_EVERY} min en <#{CODE_ALERTS_CHANNEL_ID}>",
+        inline=False,
+    )
+
+    for key in ("bt", "gt"):
+        cfg = BATTLE_TYPES[key]
+        start_phase = cfg["phase_offset"]
+        end_phase = cfg["max_phase"]
+        embed.add_field(
+            name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
+            value=(
+                f"`!set_{key}_date YYYY-MM-DD` — Configurar fecha de inicio\n"
+                f"`!orden_{key} <{start_phase}-{end_phase}>` — Publicar fase específica\n"
+                f"`!orden_{key}` — Publicar fase actual\n"
+                f"Publicación automática: 17:00 UTC en <#{cfg['channel']}>"
+            ),
+            inline=False,
+        )
+
+    await ctx.send(embed=embed)
+
+
 if __name__ == "__main__":
     bot.run(BOT_TOKEN)
