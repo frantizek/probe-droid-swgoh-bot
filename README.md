@@ -1,6 +1,6 @@
 # Sonda Droid - Bot de Discord para SWGoH
 
-Bot de Discord que monitoriza fuentes RSS para detectar automáticamente códigos regalo, códigos promo y compensaciones de Star Wars: Galaxy of Heroes.
+Bot de Discord que monitoriza fuentes RSS para detectar automáticamente códigos regalo, códigos promo y compensaciones de Star Wars: Galaxy of Heroes. Además, publica órdenes de Batalla Territorial (BT) desde MongoDB.
 
 ## Características
 
@@ -9,6 +9,9 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Anti-spam**: Elimina preguntas, ally codes y contenido no relacionado
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
+- **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
+- **Soporte GT**: Estructura de datos preparada para Guerra Territorial (4 fases: signup, defensas, ataque, cierre)
+- **Comandos admin**: `!set_bt_date` y `!orden` para gestión de BT
 
 ## Fuentes Monitorizadas
 
@@ -20,6 +23,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - Python 3.12+
 - Discord Bot Token
 - Cuenta de Discord con permisos para crear un bot
+- MongoDB Atlas (para órdenes de gremio)
 
 ## Instalación
 
@@ -47,118 +51,31 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Despliegue en Oracle Cloud (Free Tier)
-
-El bot está diseñado para desplegarse en la capa gratuita de Oracle Cloud Infrastructure (OCI).
-
-### Configuración en Oracle Cloud
-
-1. **Crear una cuenta** en [oracle.com/cloud/free](https://www.oracle.com/cloud/free/)
-
-2. **Crear una instancia**:
-   - Ve a Compute > Instances
-   - Crea una nueva instancia con:
-     - Imagen: Oracle Linux 8 o Ubuntu
-     - Forma: VM.Standard.E2.1.Micro (Always Free)
-     - Clave SSH: Genera un par de claves SSH
-
-3. **Configurar el firewall**:
-   ```bash
-   sudo firewall-cmd --permanent --add-port=22/tcp
-   sudo firewall-cmd --reload
-   ```
-
-### Preparar el servidor
-
-1. Conectar por SSH:
-   ```bash
-   ssh -i clave_privada opc@<ip-publica>
-   ```
-
-2. Instalar UV:
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   source ~/.bashrc
-   ```
-
-3. Instalar Python (si no está):
-   ```bash
-   sudo dnf install python3.12 python3.12-venv git -y  # Oracle Linux
-   # sudo apt install python3.12 python3.12-venv git -y  # Ubuntu
-   ```
-
-4. Clonar el repositorio:
-   ```bash
-   git clone <repositorio>
-   cd probe-droid-swgoh-bot
-   ```
-
-5. Configurar variables de entorno:
-   ```bash
-   cp .env.example .env
-   nano .env
-   ```
-
-### Ejecutar el bot como servicio
-
-Crear servicio systemd para que el bot se reinicie automáticamente:
-
-```bash
-sudo nano /etc/systemd/system/sondadroid.service
-```
-
-Contenido del servicio:
-```ini
-[Unit]
-Description=Sonda Droid SWGoH Bot
-After=network.target
-
-[Service]
-Type=simple
-User=opc
-WorkingDirectory=/home/opc/probe-droid-swgoh-bot
-ExecStart=/home/opc/.local/bin/uv run python bot.py
-Restart=always
-RestartSec=10
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Iniciar el servicio:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable sondadroid
-sudo systemctl start sondadroid
-```
-
-Verificar estado:
-```bash
-sudo systemctl status sondadroid
-```
-
-Ver logs:
-```bash
-sudo journalctl -u sondadroid -f
-```
-
-### Actualizar el bot
-
-```bash
-cd probe-droid-swgoh-bot
-git pull
-sudo systemctl restart sondadroid
-```
-
 ## Configuración
 
 Crear archivo `.env` en la raíz del proyecto:
 
 ```env
 BOT_TOKEN=tu_token_de_bot_aqui
-CHANNEL_ID=id_del_canal_de_discord
+GENERAL_CHANNEL_ID=id_del_canal_general
+CODE_ALERTS_CHANNEL_ID=id_del_canal_de_codigos
+BT_GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_bt
+GT_GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_gt
+MONGODB_URI=tu_mongodb_uri
+MONGODB_DB_NAME=orders_manager
 ```
+
+### Variables de Entorno
+
+| Variable | Requerido | Descripción |
+|----------|-----------|-------------|
+| `BOT_TOKEN` | Sí | Token del bot de Discord |
+| `GENERAL_CHANNEL_ID` | No | Canal por defecto (fallback para los demás) |
+| `CODE_ALERTS_CHANNEL_ID` | No | Canal para alertas RSS de códigos (default: GENERAL_CHANNEL_ID) |
+| `BT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de BT (default: GENERAL_CHANNEL_ID) |
+| `GT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de GT (default: GENERAL_CHANNEL_ID) |
+| `MONGODB_URI` | Sí | URI de conexión a MongoDB |
+| `MONGODB_DB_NAME` | No | Nombre de la base de datos (default: `orders_manager`) |
 
 ### Obtener el Token del Bot
 
@@ -173,18 +90,152 @@ CHANNEL_ID=id_del_canal_de_discord
 1. En Discord, habilita el "Developer Mode" (Configuración > Avanzado > Modo Desarrollador)
 2. Haz clic derecho en el canal > "Copiar ID del canal"
 
-## Uso
+### Autorización
 
-Iniciar el bot:
-```bash
-python bot.py
-```
+Los comandos admin (`!set_bt_date`, `!orden`) están disponibles para usuarios con los siguientes permisos en el servidor: **Administrador**, **Gestionar Servidor**, **Expulsar Miembros** o **Banear Miembros** (cubren perfiles de admin y oficial).
 
 ## Comandos
 
-| Comando | Descripción |
-|---------|-------------|
-| `!estado` | Muestra el estado operativo del bot |
+| Comando | Admin | Descripción |
+|---------|-------|-------------|
+| `!estado` | No | Muestra el estado operativo del bot y configuración BT |
+| `!set_bt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la BT |
+| `!orden <1-6>` | Sí | Publica la orden de una fase específica |
+| `!orden` | Sí | Publica la orden de la fase actual |
+
+## Órdenes de Batalla Territorial (BT)
+
+El bot publica automáticamente las órdenes de BT cada día a las **17:00 UTC** en el canal configurado (`GUILD_ORDERS_CHANNEL_ID`).
+
+### Flujo de publicación
+
+1. El admin configura la fecha de inicio de BT con `!set_bt_date 2026-07-06`
+2. El bot calcula la fase actual: `días desde inicio + 1`
+3. Busca en MongoDB un documento activo en la colección `orders` con el `template_id` correspondiente:
+
+   | Fase | template_id |
+   |------|-------------|
+   | 1 | `ordenes_fase_1` |
+   | 2 | `ordenes_fase_2` |
+   | 3 | `ordenes_fase_3` |
+   | 4 | `ordenes_fase_4` |
+   | 5 | `ordenes_fase_5_mandalore` |
+   | 6 | `ordenes_fase_6_mandalore` |
+
+4. Publica un embed con el formato: `"MIÉRCOLES 8 de Julio:\n\n{content}"`
+
+### Publicación manual
+
+Un admin puede forzar la publicación con:
+- `!orden` — publica la fase actual
+- `!orden 3` — publica la fase 3 específica
+
+## Guerra Territorial (GT) — Preparación
+
+La estructura de datos para GT está definida con 4 fases y un script para inicializar los documentos en MongoDB:
+
+| Fase | template_id | Descripción |
+|:----:|-------------|-------------|
+| 0 | `ordenes_gt_signup` | Apuntarse a la batalla |
+| 1 | `ordenes_gt_defensas` | Instrucciones de defensa por zona |
+| 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
+| 3 | `ordenes_gt_cierre` | Cierre y resultados |
+
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT será implementada próximamente.
+
+## Despliegue en Oracle Cloud (Free Tier)
+
+El bot está diseñado para desplegarse en la capa gratuita de Oracle Cloud Infrastructure (OCI).
+
+### Configuración en Oracle Cloud
+
+1. **Crear una cuenta** en [oracle.com/cloud/free](https://www.oracle.com/cloud/free/)
+
+2. **Crear una instancia**:
+   - Ve a Compute > Instances
+   - Crea una nueva instancia con:
+     - Imagen: Ubuntu 22.04+
+     - Forma: VM.Standard.E2.1.Micro (Always Free)
+     - Clave SSH: Genera un par de claves SSH
+
+### Preparar el servidor
+
+1. Conectar por SSH:
+   ```bash
+   ssh ubuntu@<ip-publica>
+   ```
+
+2. Instalar UV:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   source ~/.bashrc
+   ```
+
+3. Clonar el repositorio:
+   ```bash
+   mkdir -p /opt/bots/discord
+   cd /opt/bots/discord
+   git clone <repositorio>
+   cd probe-droid-swgoh-bot
+   ```
+
+4. Configurar variables de entorno:
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+
+### Ejecutar el bot como servicio
+
+Crear servicio systemd:
+
+```bash
+sudo nano /etc/systemd/system/probe-droid.service
+```
+
+Contenido del servicio:
+```ini
+[Unit]
+Description=Probe Droid - Discord bot for SWGOH
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/bots/discord/probe-droid-swgoh-bot
+ExecStart=/home/ubuntu/.local/bin/uv run python bot.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Iniciar el servicio:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable probe-droid
+sudo systemctl start probe-droid
+```
+
+Verificar estado:
+```bash
+sudo systemctl status probe-droid
+```
+
+Ver logs:
+```bash
+sudo journalctl -u probe-droid -f
+```
+
+### Actualizar el bot
+
+```bash
+cd /opt/bots/discord/probe-droid-swgoh-bot
+git pull
+sudo systemctl restart probe-droid
+```
 
 ## Sistema de Filtros
 
@@ -208,19 +259,23 @@ Cada fuente tiene palabras clave específicas que deben estar presentes para con
 ```
 probe-droid-swgoh-bot/
 ├── bot.py              # Código principal del bot
-├── pyproject.toml      # Configuración del proyecto
+├── pyproject.toml      # Configuración del proyecto y dependencias
 ├── .env                # Variables de entorno (no comprometido)
+├── .env.example        # Plantilla de variables de entorno
 ├── bot_data.db         # Base de datos SQLite (auto-generado)
-└── bot.log             # Log del bot (auto-generado)
+├── bot.log             # Log del bot (auto-generado)
+└── .github/
+    ├── ISSUE_TEMPLATE/ # Plantillas para issues
+    └── pull_request_template.md
 ```
 
 ## Contribuir
 
-1. Haz un fork del repositorio
-2. Crea una rama para tu feature (`git checkout -b feature/nueva-feature`)
-3. Commit tus cambios (`git commit -m 'Añadir nueva feature'`)
-4. Push a la rama (`git push origin feature/nueva-feature`)
-5. Abre un Pull Request
+1. Documenta el issue en `.github/ISSUE_TEMPLATE/` o crea un archivo de especificación
+2. Crea una rama para tu feature (`git checkout -b feat/nombre-feature`)
+3. Commit tus cambios (`git commit -m "feat: descripción del cambio"`)
+4. Push a la rama (`git push origin feat/nombre-feature`)
+5. Abre un Pull Request usando la plantilla
 
 ## Licencia
 
