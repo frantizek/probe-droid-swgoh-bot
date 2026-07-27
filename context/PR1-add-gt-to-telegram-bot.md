@@ -4,7 +4,7 @@
 
 El bot Darjetii actualmente solo publica órdenes de BT (Batalla Territorial) automáticamente a
 las 17:00 UTC. La GT (Guerra Territorial) tiene una estructura similar pero con 4 fases en
-lugar de 6:
+lugar de 6, y se publica a las **19:00 UTC** (2 horas después que BT):
 
 | Fase | template_id | Descripción |
 |:----:|-------------|-------------|
@@ -91,10 +91,10 @@ def send_daily_gt_reminder_sync(bot: Bot) -> None:
 ```python
 scheduler.add_job(
     send_daily_gt_reminder_sync,
-    CronTrigger(hour=17, minute=0, second=0, timezone="UTC"),
+    CronTrigger(hour=19, minute=0, second=0, timezone="UTC"),
     args=[bot],
     id="daily_gt_reminder",
-    name="Daily 17:00 UTC GT reminder",
+    name="Daily 19:00 UTC GT reminder",
     replace_existing=True,
 )
 ```
@@ -159,7 +159,7 @@ Agregar los nuevos comandos al `README.md` en la tabla de comandos.
 
 1. Ejecutar `db.execute("CREATE TABLE IF NOT EXISTS gt_config ...")` para crear la tabla
 2. Validar que `/set_gt_date 2026-07-24` persiste y se recupera correctamente
-3. Validar que el scheduler ejecuta `send_daily_gt_reminder` a las 17:00 UTC
+3. Validar que el scheduler ejecuta `send_daily_gt_reminder` a las 19:00 UTC (2h después que BT)
 4. Validar que `/orden_gt` muestra la fase correcta
 5. Verificar que no se rompe la funcionalidad existente de BT
 
