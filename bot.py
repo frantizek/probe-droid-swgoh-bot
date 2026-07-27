@@ -68,7 +68,7 @@ BATTLE_TYPES = {
         },
         "phase_offset": 0,
         "max_phase": 3,
-        "post_hour": 17,
+        "post_hour": 19,
         "post_minute": 0,
     },
 }
@@ -351,7 +351,7 @@ async def daily_bt_order():
     await publish_order("bt")
 
 
-@tasks.loop(time=datetime.strptime("17:00:00", "%H:%M:%S").time())
+@tasks.loop(time=datetime.strptime("19:00:00", "%H:%M:%S").time())
 async def daily_gt_order():
     await publish_order("gt")
 
@@ -416,7 +416,9 @@ async def on_ready():
         daily_bt_order.start()
     if not daily_gt_order.is_running():
         daily_gt_order.start()
-    log.info("RSS scan: cada %s min | BT/GT daily: 17:00 UTC", CHECK_EVERY)
+    bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d} UTC"
+    gt_time = f"{BATTLE_TYPES['gt']['post_hour']:02d}:{BATTLE_TYPES['gt']['post_minute']:02d} UTC"
+    log.info("RSS scan: cada %s min | BT daily: %s | GT daily: %s", CHECK_EVERY, bt_time, gt_time)
 
 
 # ─────────────────────────────────────────────
@@ -444,9 +446,10 @@ async def estado(ctx):
                 info += " | Finalizada"
         else:
             info = "No configurada"
+        post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
         embed.add_field(
             name=f"{cfg['name']} ({cfg['name_short']})",
-            value=f"Diario 17:00 UTC en <#{cfg['channel']}>\n{info}",
+            value=f"Diario {post_time} en <#{cfg['channel']}>\n{info}",
             inline=False,
         )
 
@@ -593,13 +596,14 @@ async def ayuda(ctx):
         cfg = BATTLE_TYPES[key]
         start_phase = cfg["phase_offset"]
         end_phase = cfg["max_phase"]
+        post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
         embed.add_field(
             name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
             value=(
                 f"`!set_{key}_date YYYY-MM-DD` — Configurar fecha de inicio\n"
                 f"`!orden_{key} <{start_phase}-{end_phase}>` — Publicar fase específica\n"
                 f"`!orden_{key}` — Publicar fase actual\n"
-                f"Publicación automática: 17:00 UTC en <#{cfg['channel']}>"
+                f"Publicación automática: {post_time} en <#{cfg['channel']}>"
             ),
             inline=False,
         )
