@@ -269,6 +269,23 @@ probe-droid-swgoh-bot/
     └── pull_request_template.md
 ```
 
+## Pruebas
+
+El proyecto usa `pytest` para las pruebas unitarias.
+
+```bash
+# Instalar dependencias de desarrollo
+uv sync --extra dev
+
+# Ejecutar todas las pruebas
+uv run pytest -v
+
+# Ejecutar con salida resumida
+uv run pytest --tb=short
+```
+
+Las pruebas de base de datos usan archivos temporales y no afectan la base de datos de producción.
+
 ## Contribuir
 
 1. Documenta el issue en `.github/ISSUE_TEMPLATE/` o crea un archivo de especificación
