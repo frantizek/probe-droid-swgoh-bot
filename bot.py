@@ -100,9 +100,11 @@ BLACKLIST = [
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+DB_PATH = "bot_data.db"
+
 
 def init_db():
-    conn = sqlite3.connect("bot_data.db")
+    conn = sqlite3.connect(DB_PATH)
     conn.execute("CREATE TABLE IF NOT EXISTS seen_posts (post_id TEXT PRIMARY KEY)")
     conn.execute("CREATE TABLE IF NOT EXISTS bt_config (id INTEGER PRIMARY KEY, start_date TEXT, updated_at TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS event_dates (event_type TEXT PRIMARY KEY, start_date TEXT, updated_at TEXT)")
@@ -123,7 +125,7 @@ def init_db():
 
 
 def is_new_post(post_id: str) -> bool:
-    conn = sqlite3.connect("bot_data.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT 1 FROM seen_posts WHERE post_id = ?", (post_id,))
     result = c.fetchone()
@@ -138,7 +140,7 @@ def is_new_post(post_id: str) -> bool:
 
 def get_event_date(event_type: str) -> str | None:
     try:
-        conn = sqlite3.connect("bot_data.db")
+        conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("SELECT start_date FROM event_dates WHERE event_type = ?", (event_type,))
         row = c.fetchone()
@@ -151,7 +153,7 @@ def get_event_date(event_type: str) -> str | None:
 
 def set_event_date(event_type: str, start_date: str) -> bool:
     try:
-        conn = sqlite3.connect("bot_data.db")
+        conn = sqlite3.connect(DB_PATH)
         conn.execute(
             "INSERT OR REPLACE INTO event_dates (event_type, start_date, updated_at) VALUES (?, ?, datetime('now'))",
             (event_type, start_date),
