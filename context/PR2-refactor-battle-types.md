@@ -33,6 +33,8 @@ BATTLE_TYPES = {
         },
         "phase_offset": 1,  # phase = days_since + 1
         "max_phase": 6,
+        "post_hour": 17,
+        "post_minute": 0,
         "monday_only": True,  # warning si no es lunes
     },
     "gt": {
@@ -46,6 +48,8 @@ BATTLE_TYPES = {
         },
         "phase_offset": 0,  # phase = days_since + 0
         "max_phase": 3,
+        "post_hour": 19,
+        "post_minute": 0,
         "monday_only": False,
     },
 }
