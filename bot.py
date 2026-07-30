@@ -31,6 +31,10 @@ GT_GUILD_ORDERS_CHANNEL_ID = int(os.getenv("GT_GUILD_ORDERS_CHANNEL_ID", str(GEN
 CHECK_EVERY = 15
 POST_TIMEZONE = "UTC"
 
+# IDs de usuarios autorizados a usar comandos admin via DM (separados por coma)
+_ADMIN_USER_IDS_ENV = os.getenv("ADMIN_USER_IDS", "")
+ADMIN_USER_IDS = {int(uid.strip()) for uid in _ADMIN_USER_IDS_ENV.split(",") if uid.strip()}
+
 MONTHS_ES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio",
              "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 WEEKDAYS_ES = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"]
@@ -273,7 +277,7 @@ def clean_html(raw_html: str) -> str:
 
 def is_authorized(ctx) -> bool:
     if not ctx.guild:
-        return False
+        return ctx.author.id in ADMIN_USER_IDS
     perms = ctx.author.guild_permissions
     if perms.administrator or perms.manage_guild or perms.ban_members or perms.kick_members:
         return True
@@ -582,7 +586,7 @@ async def ayuda(ctx):
 
     embed.add_field(
         name="📡 Generales",
-        value="`!estado` — Estado del bot, BT y GT\n`!ayuda` — Esta ayuda",
+        value="`!estado` — Estado del bot, BT y GT\n`!ayuda` — Esta ayuda\nLos comandos admin también funcionan por MD si tu ID está en `ADMIN_USER_IDS`.",
         inline=False,
     )
 
