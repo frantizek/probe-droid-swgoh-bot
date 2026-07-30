@@ -438,6 +438,7 @@ async def estado(ctx):
     )
     embed.add_field(name="RSS Codes", value=f"Cada {CHECK_EVERY} min en <#{CODE_ALERTS_CHANNEL_ID}>", inline=False)
 
+    today = datetime.now(timezone.utc).date()
     for key in ("bt", "gt"):
         cfg = BATTLE_TYPES[key]
         start = get_event_date(key)
@@ -446,6 +447,8 @@ async def estado(ctx):
             info = f"Inicio: {start}"
             if phase is not None:
                 info += f" | Fase actual: {phase}"
+            elif date.fromisoformat(start) > today:
+                info += " | Por iniciar"
             else:
                 info += " | Finalizada"
         else:
