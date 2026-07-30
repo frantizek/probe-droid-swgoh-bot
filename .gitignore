@@ -14,3 +14,7 @@ wheels/
 bot.log
 
 .idea/
+.idea/bot_data.db
+
+# Specs / context docs (not part of the running bot)
+context/
