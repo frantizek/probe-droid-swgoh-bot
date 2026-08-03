@@ -10,7 +10,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
-- **Soporte GT**: Estructura de datos preparada para Guerra Territorial (4 fases: signup, defensas, ataque, cierre)
+- **Órdenes GT**: Ciclo semanal fijo (17:00 UTC) de Guerra Territorial: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado)
 - **Comandos admin**: `!set_bt_date` y `!orden` para gestión de BT
 
 ## Fuentes Monitorizadas
@@ -100,7 +100,7 @@ Los comandos admin (`!set_bt_date`, `!orden`) están disponibles para usuarios c
 |---------|-------|-------------|
 | `!estado` | No | Muestra el estado operativo del bot y configuración BT/GT |
 | `!set_bt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la BT |
-| `!set_gt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la GT |
+| `!set_gt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la GT (domingo o jueves inician en fase 0) |
 | `!orden_bt <1-6>` | Sí | Publica la orden BT de una fase específica |
 | `!orden_bt` | Sí | Publica la orden BT de la fase actual |
 | `!orden_gt <0-3>` | Sí | Publica la orden GT de una fase específica |
@@ -133,16 +133,17 @@ Un admin puede forzar la publicación con:
 - `!orden` — publica la fase actual
 - `!orden 3` — publica la fase 3 específica
 
-## Guerra Territorial (GT) — Preparación
+## Guerra Territorial (GT) — Cadencia semanal
 
-La estructura de datos para GT está definida con 4 fases y un script para inicializar los documentos en MongoDB:
+La GT sigue un ciclo semanal fijo: con `!set_gt_date` se configura una sola vez y el bot publica automáticamente la fase correspondiente a cada día de la semana. Los 4 templates siguen definidos en MongoDB (la fase 3 se conserva pero ya no se publica):
 
-| Fase | template_id | Descripción |
-|:----:|-------------|-------------|
-| 0 | `ordenes_gt_signup` | Apuntarse a la batalla |
-| 1 | `ordenes_gt_defensas` | Instrucciones de defensa por zona |
-| 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
-| 3 | `ordenes_gt_cierre` | Cierre y resultados |
+| Día | Fase | template_id | Descripción |
+|:---:|:----:|-------------|-------------|
+| Domingo y jueves | 0 | `ordenes_gt_signup` | Invitación a unirse a la GT |
+| Lunes y viernes | 1 | `ordenes_gt_defensas` | Instrucciones de defensa por zona |
+| Martes y sábado | 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
+| Miércoles | — | — | Sin publicación (descanso) |
+| — | 3 | `ordenes_gt_cierre` | Cierre y resultados (no se publica) |
 
 > Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **17:00 UTC** (mismo horario que BT).
 
