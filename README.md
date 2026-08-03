@@ -1,6 +1,6 @@
 # Sonda Droid - Bot de Discord para SWGoH
 
-Bot de Discord que monitoriza fuentes RSS para detectar automáticamente códigos regalo, códigos promo y compensaciones de Star Wars: Galaxy of Heroes. Además, publica órdenes de Batalla Territorial (BT) desde MongoDB.
+Bot de Discord que monitoriza fuentes RSS para detectar automáticamente códigos regalo, códigos promo y compensaciones de Star Wars: Galaxy of Heroes. Además, publica órdenes de Batalla Territorial (BT) y Guerra Territorial (GT) desde MongoDB.
 
 ## Características
 
@@ -11,7 +11,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
 - **Órdenes GT**: Ciclo semanal fijo (17:00 UTC) de Guerra Territorial: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado)
-- **Comandos admin**: `!set_bt_date` y `!orden` para gestión de BT
+- **Comandos admin**: `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
 
 ## Fuentes Monitorizadas
 
@@ -63,6 +63,7 @@ BT_GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_bt
 GT_GUILD_ORDERS_CHANNEL_ID=id_del_canal_de_ordenes_gt
 MONGODB_URI=tu_mongodb_uri
 MONGODB_DB_NAME=orders_manager
+ADMIN_USER_IDS=id_usuario_discord,otro_id_usuario
 ```
 
 ### Variables de Entorno
@@ -76,6 +77,7 @@ MONGODB_DB_NAME=orders_manager
 | `GT_GUILD_ORDERS_CHANNEL_ID` | No | Canal para órdenes de GT (default: GENERAL_CHANNEL_ID) |
 | `MONGODB_URI` | Sí | URI de conexión a MongoDB |
 | `MONGODB_DB_NAME` | No | Nombre de la base de datos (default: `orders_manager`) |
+| `ADMIN_USER_IDS` | No | IDs de Discord (separados por coma) autorizados a usar comandos admin por MD (default: vacío) |
 
 ### Obtener el Token del Bot
 
@@ -92,13 +94,14 @@ MONGODB_DB_NAME=orders_manager
 
 ### Autorización
 
-Los comandos admin (`!set_bt_date`, `!orden`) están disponibles para usuarios con los siguientes permisos en el servidor: **Administrador**, **Gestionar Servidor**, **Expulsar Miembros** o **Banear Miembros** (cubren perfiles de admin y oficial).
+Los comandos admin (`!set_bt_date`, `!set_gt_date`, `!orden_bt`, `!orden_gt`) están disponibles para usuarios con los siguientes permisos en el servidor: **Administrador**, **Gestionar Servidor**, **Expulsar Miembros** o **Banear Miembros** (cubren perfiles de admin y oficial). También funcionan por MD para los IDs de Discord incluidos en `ADMIN_USER_IDS`.
 
 ## Comandos
 
 | Comando | Admin | Descripción |
 |---------|-------|-------------|
 | `!estado` | No | Muestra el estado operativo del bot y configuración BT/GT |
+| `!ayuda` | Sí | Muestra los comandos disponibles |
 | `!set_bt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la BT |
 | `!set_gt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la GT (domingo o jueves inician en fase 0) |
 | `!orden_bt <1-6>` | Sí | Publica la orden BT de una fase específica |
@@ -130,8 +133,9 @@ El bot publica automáticamente las órdenes de BT y GT cada día a las **17:00 
 ### Publicación manual
 
 Un admin puede forzar la publicación con:
-- `!orden` — publica la fase actual
-- `!orden 3` — publica la fase 3 específica
+- `!orden_bt` / `!orden_gt` — publica la fase actual
+- `!orden_bt 3` — publica la fase 3 de BT específica
+- `!orden_gt 0` — publica la fase 0 de GT específica (signup)
 
 ## Guerra Territorial (GT) — Cadencia semanal
 
@@ -251,8 +255,8 @@ El bot utiliza un sistema de 3 capas para filtrar posts:
 
 ### Capa 2: Blacklist
 Palabras que siempre descartan un post:
-- ally code, friend code, add me, roster
-- how, help, issue, error, missing, question
+- ally code, allycode, friend code, my code, add me, roster
+- how, help, issue, error, missing, question, ?, why
 - starkiller, lsb, bundle, purchase, support, banned, cheat
 
 ### Capa 3: Keywords
@@ -263,7 +267,9 @@ Cada fuente tiene palabras clave específicas que deben estar presentes para con
 ```
 probe-droid-swgoh-bot/
 ├── bot.py              # Código principal del bot
+├── AGENTS.md           # Acuerdo de trabajo del agente (workflow)
 ├── pyproject.toml      # Configuración del proyecto y dependencias
+├── tests/              # Pruebas unitarias (pytest)
 ├── .env                # Variables de entorno (no comprometido)
 ├── .env.example        # Plantilla de variables de entorno
 ├── bot_data.db         # Base de datos SQLite (auto-generado)
