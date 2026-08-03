@@ -108,7 +108,7 @@ Los comandos admin (`!set_bt_date`, `!orden`) están disponibles para usuarios c
 
 ## Órdenes de Batalla Territorial (BT)
 
-El bot publica automáticamente las órdenes de BT cada día a las **17:00 UTC** y las de GT a las **19:00 UTC** en sus respectivos canales configurados.
+El bot publica automáticamente las órdenes de BT y GT cada día a las **17:00 UTC** en sus respectivos canales configurados.
 
 ### Flujo de publicación
 
@@ -144,7 +144,7 @@ La estructura de datos para GT está definida con 4 fases y un script para inici
 | 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
 | 3 | `ordenes_gt_cierre` | Cierre y resultados |
 
-> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **19:00 UTC** (2 horas después que BT).
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **17:00 UTC** (mismo horario que BT).
 
 ## Despliegue en Oracle Cloud (Free Tier)
 
