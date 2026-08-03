@@ -74,6 +74,17 @@ BATTLE_TYPES = {
         "max_phase": 3,
         "post_hour": 17,
         "post_minute": 0,
+        # Ciclo semanal fijo: weekday() -> fase. La fase 3 (análisis/cierre)
+        # ya no se publica automáticamente (template conservado).
+        "weekday_phase": {
+            6: 0,  # domingo  -> signup
+            0: 1,  # lunes    -> defensas
+            1: 2,  # martes   -> ataque
+            2: None,  # miércoles -> sin publicación
+            3: 0,  # jueves   -> signup
+            4: 1,  # viernes  -> defensas
+            5: 2,  # sábado   -> ataque
+        },
     },
 }
 
@@ -243,9 +254,12 @@ def get_phase(event_type: str) -> int | None:
     try:
         start = date.fromisoformat(start_str)
         today = datetime.now(timezone.utc).date()
-        days_since = (today - start).days
-        if days_since < 0:
+        if today < start:
             return None
+        weekday_phase = cfg.get("weekday_phase")
+        if weekday_phase is not None:
+            return weekday_phase.get(today.weekday())
+        days_since = (today - start).days
         phase = days_since + cfg["phase_offset"]
         if phase > cfg["max_phase"]:
             return None
@@ -253,6 +267,12 @@ def get_phase(event_type: str) -> int | None:
     except Exception as e:
         log.error("Error calculando fase %s: %s", event_type, e)
         return None
+
+
+def get_order_date(event_type: str, start: date, phase: int) -> date:
+    if BATTLE_TYPES[event_type].get("weekday_phase") is not None:
+        return datetime.now(timezone.utc).date()
+    return start + timedelta(days=phase - BATTLE_TYPES[event_type]["phase_offset"])
 
 
 def format_date_es(d: date) -> str:
@@ -330,7 +350,7 @@ async def publish_order(event_type: str):
     start_str = get_event_date(event_type)
     if start_str:
         start = date.fromisoformat(start_str)
-        current_date = start + timedelta(days=phase - cfg["phase_offset"])
+        current_date = get_order_date(event_type, start, phase)
         full_message = f"{format_weekday_date_es(current_date)}\n\n{order}"
     else:
         full_message = f"**Fase {phase}**\n\n{order}"
@@ -449,6 +469,8 @@ async def estado(ctx):
                 info += f" | Fase actual: {phase}"
             elif date.fromisoformat(start) > today:
                 info += " | Por iniciar"
+            elif key == "gt":
+                info += " | Ciclo semanal activo (sin publicación hoy)"
             else:
                 info += " | Finalizada"
         else:
@@ -496,6 +518,15 @@ async def _set_date_cmd(ctx, event_type: str, fecha: str | None):
             "Continuando con la fecha indicada..."
         )
 
+    if event_type == "gt" and parsed.weekday() not in (3, 6):
+        days_to_signup = min((3 - parsed.weekday()) % 7, (6 - parsed.weekday()) % 7)
+        next_signup = parsed + timedelta(days=days_to_signup)
+        await ctx.send(
+            f"⚠️ Advertencia: {fecha} no es domingo ni jueves (días de fase 0/signup).\n"
+            f"Próximo día de signup: {next_signup.isoformat()}\n"
+            "Continuando con la fecha indicada..."
+        )
+
     if set_event_date(event_type, fecha):
         await ctx.send(f"✅ Fecha de {cfg['name']} configurada: {fecha}")
         log.info("%s start date set to %s by admin %s", event_type, fecha, ctx.author.id)
@@ -536,7 +567,13 @@ async def _orden_cmd(ctx, event_type: str, fase: str | None):
     else:
         phase = get_phase(event_type)
         if phase is None:
-            await ctx.send(f"⚠️ No hay {cfg['name_short']} activa. Configura la fecha con `!set_{event_type}_date YYYY-MM-DD`")
+            if event_type == "gt":
+                await ctx.send(
+                    "⚠️ Hoy no hay publicación de GT (miércoles, día de descanso). "
+                    f"Prueba `{cmd_name} <0-3>` con una fase concreta."
+                )
+            else:
+                await ctx.send(f"⚠️ No hay {cfg['name_short']} activa. Configura la fecha con `!set_{event_type}_date YYYY-MM-DD`")
             return
 
     order = get_template_order(cfg["templates"], phase)
@@ -547,7 +584,7 @@ async def _orden_cmd(ctx, event_type: str, fase: str | None):
     start_str = get_event_date(event_type)
     if start_str:
         start = date.fromisoformat(start_str)
-        current_date = start + timedelta(days=phase - cfg["phase_offset"])
+        current_date = get_order_date(event_type, start, phase)
         full_message = f"{format_weekday_date_es(current_date)}\n\n{order}"
     else:
         full_message = f"**Fase {phase}**\n\n{order}"
@@ -604,12 +641,19 @@ async def ayuda(ctx):
         start_phase = cfg["phase_offset"]
         end_phase = cfg["max_phase"]
         post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
+        cadence = ""
+        if key == "gt":
+            cadence = (
+                "Cadencia semanal: Dom/Jue signup · Lun/Vie defensas · "
+                "Mar/Sáb ataque · Mié descanso\n"
+            )
         embed.add_field(
             name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
             value=(
                 f"`!set_{key}_date YYYY-MM-DD` — Configurar fecha de inicio\n"
                 f"`!orden_{key} <{start_phase}-{end_phase}>` — Publicar fase específica\n"
                 f"`!orden_{key}` — Publicar fase actual\n"
+                f"{cadence}"
                 f"Publicación automática: {post_time} en <#{cfg['channel']}>"
             ),
             inline=False,
