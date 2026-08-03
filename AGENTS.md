@@ -65,5 +65,7 @@ Before opening the PR:
   - A clear explanation of the approach and any tradeoffs made
   - Evidence of testing (test output, coverage delta, or manual verification steps)
   - Any known follow-ups or deferred work
+- Always create PR bodies via `--body-file` pointing to a file written with the Write tool — never pass the body inline in the shell command (on Windows/PowerShell, `` ` `` and backslashes inside double-quoted strings are escape characters and silently corrupt markdown/backticks)
+- After creating or editing a PR, verify the rendered body (e.g. `gh pr view <n> --json body -q .body`) shows clean markdown
 - Ensure CI passes before requesting review
 - Respond to review feedback promptly and thoroughly
