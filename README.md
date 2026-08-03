@@ -237,12 +237,61 @@ Ver logs:
 sudo journalctl -u probe-droid -f
 ```
 
-### Actualizar el bot
+### Actualizar el bot (guía rápida de despliegue)
+
+Secuencia completa para desplegar la última versión de `main` en la VM:
 
 ```bash
+# 1. Conectar a la VM (desde tu máquina local)
+ssh ubuntu@<ip-publica>
+
+# 2. Ir al directorio del bot
 cd /opt/bots/discord/probe-droid-swgoh-bot
-git pull
+
+# 3. Comprobar que no hay cambios locales sin commitear
+#    (debe salir vacío; bot_data.db y bot.log no aparecen por estar en .gitignore)
+git status --short
+
+# 4. Traer la última versión de main (fast-forward evita merge commits accidentales)
+git pull --ff-only
+
+# 5. Si cambió pyproject.toml o uv.lock, resincronizar dependencias
+#    (hacerlo siempre es rápido y seguro)
+uv sync
+
+# 6. Reiniciar el servicio con la nueva versión
 sudo systemctl restart probe-droid
+
+# 7. Confirmar que el servicio está activo (debe mostrar "active (running)")
+sudo systemctl status probe-droid
+
+# 8. Ver logs de arranque
+sudo journalctl -u probe-droid --since "5 min ago"
+#    Para seguir los logs en vivo: sudo journalctl -u probe-droid -f
+```
+
+**Qué debe aparecer en los logs para confirmar un arranque correcto:**
+
+- `Shard ID None has connected to Gateway`
+- `[INFO] Sonda v5 activa como probe-droid-swgoh-bot#2600`
+- `[INFO] RSS scan: cada 15 min | BT daily: 17:00 UTC | GT daily: 17:00 UTC`
+
+**Mensajes normales que NO son errores:**
+
+- `probe-droid.service: Main process exited, code=exited, status=143/n/a` → cierre correcto por `restart` (SIGTERM)
+- `[WARNING] PyNaCl is not installed, voice will NOT be supported` (y el de `davey`) → voz no soportada, sin efecto
+
+**Verificación final en Discord:** ejecutar `!estado` (debe mostrar BT y GT configurados con sus horarios).
+
+**Rollback (volver a una versión anterior):**
+
+```bash
+# Ver las últimas versiones de main y elegir un commit anterior
+git log --oneline -5
+git reset --hard <commit_id>    # ¡OJO! descarta cualquier cambio local
+sudo systemctl restart probe-droid
+# Para volver al estado normal después del rollback:
+git pull --ff-only
 ```
 
 ## Sistema de Filtros
