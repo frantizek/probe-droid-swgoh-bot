@@ -72,7 +72,7 @@ BATTLE_TYPES = {
         },
         "phase_offset": 0,
         "max_phase": 3,
-        "post_hour": 19,
+        "post_hour": 17,
         "post_minute": 0,
     },
 }
@@ -355,7 +355,7 @@ async def daily_bt_order():
     await publish_order("bt")
 
 
-@tasks.loop(time=datetime.strptime("19:00:00", "%H:%M:%S").time())
+@tasks.loop(time=datetime.strptime("17:00:00", "%H:%M:%S").time())
 async def daily_gt_order():
     await publish_order("gt")
 
