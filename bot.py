@@ -74,8 +74,9 @@ BATTLE_TYPES = {
         "max_phase": 3,
         "post_hour": 17,
         "post_minute": 0,
-        # Ciclo semanal fijo: weekday() -> fase. La fase 3 (análisis/cierre)
-        # ya no se publica automáticamente (template conservado).
+        # Ciclo anclado a la fecha: weekday() -> fase, mientras la fecha esté
+        # dentro de la ventana activa. La fase 3 (análisis/cierre) ya no se
+        # publica automáticamente (template conservado).
         "weekday_phase": {
             6: 0,  # domingo  -> signup
             0: 1,  # lunes    -> defensas
@@ -85,6 +86,9 @@ BATTLE_TYPES = {
             4: 1,  # viernes  -> defensas
             5: 2,  # sábado   -> ataque
         },
+        # Ventana activa en días según el día de la semana de la fecha de inicio
+        # (domingo: semana completa con 2 GT; jueves: una GT de 3 días; resto: 3).
+        "duration_by_start_weekday": {6: 7, 3: 3},
     },
 }
 
@@ -244,6 +248,20 @@ def get_random_order() -> str | None:
 # ─────────────────────────────────────────────
 # LÓGICA COMPARTIDA: BT / GT
 # ─────────────────────────────────────────────
+def get_gt_duration(event_type: str, start: date) -> int | None:
+    cfg = BATTLE_TYPES.get(event_type)
+    if cfg is None or cfg.get("weekday_phase") is None:
+        return None
+    return cfg.get("duration_by_start_weekday", {}).get(start.weekday(), 3)
+
+
+def gt_in_window(event_type: str, start: date, today: date) -> bool:
+    duration = get_gt_duration(event_type, start)
+    if duration is None:
+        return False
+    return 0 <= (today - start).days < duration
+
+
 def get_phase(event_type: str) -> int | None:
     cfg = BATTLE_TYPES.get(event_type)
     if not cfg:
@@ -258,6 +276,8 @@ def get_phase(event_type: str) -> int | None:
             return None
         weekday_phase = cfg.get("weekday_phase")
         if weekday_phase is not None:
+            if not gt_in_window(event_type, start, today):
+                return None
             return weekday_phase.get(today.weekday())
         days_since = (today - start).days
         phase = days_since + cfg["phase_offset"]
@@ -469,7 +489,7 @@ async def estado(ctx):
                 info += f" | Fase actual: {phase}"
             elif date.fromisoformat(start) > today:
                 info += " | Por iniciar"
-            elif key == "gt":
+            elif key == "gt" and gt_in_window(key, date.fromisoformat(start), today):
                 info += " | Ciclo semanal activo (sin publicación hoy)"
             else:
                 info += " | Finalizada"
@@ -568,10 +588,16 @@ async def _orden_cmd(ctx, event_type: str, fase: str | None):
         phase = get_phase(event_type)
         if phase is None:
             if event_type == "gt":
-                await ctx.send(
-                    "⚠️ Hoy no hay publicación de GT (miércoles, día de descanso). "
-                    f"Prueba `{cmd_name} <0-3>` con una fase concreta."
-                )
+                start_str = get_event_date(event_type)
+                if start_str and gt_in_window(
+                    event_type, date.fromisoformat(start_str), datetime.now(timezone.utc).date()
+                ):
+                    await ctx.send(
+                        "⚠️ Hoy no hay publicación de GT (miércoles, día de descanso). "
+                        f"Prueba `{cmd_name} <0-3>` con una fase concreta."
+                    )
+                else:
+                    await ctx.send(f"⚠️ No hay {cfg['name_short']} activa. Configura la fecha con `!set_{event_type}_date YYYY-MM-DD`")
             else:
                 await ctx.send(f"⚠️ No hay {cfg['name_short']} activa. Configura la fecha con `!set_{event_type}_date YYYY-MM-DD`")
             return
@@ -644,8 +670,10 @@ async def ayuda(ctx):
         cadence = ""
         if key == "gt":
             cadence = (
-                "Cadencia semanal: Dom/Jue signup · Lun/Vie defensas · "
-                "Mar/Sáb ataque · Mié descanso\n"
+                "Cadencia GT: fecha en domingo = 7 días · jueves = 3 días · "
+                "otro día = 3 días\n"
+                "Fases: signup (dom/jue) · defensas (lun/vie) · ataque (mar/sáb) · "
+                "miércoles descanso\n"
             )
         embed.add_field(
             name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
