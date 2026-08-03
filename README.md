@@ -10,7 +10,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
-- **Órdenes GT**: Ciclo semanal fijo (17:00 UTC) de Guerra Territorial: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado)
+- **Órdenes GT**: Ciclo anclado a la fecha (17:00 UTC) de Guerra Territorial: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado); 7 días si la fecha es domingo, 3 si es jueves
 - **Comandos admin**: `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
 
 ## Fuentes Monitorizadas
@@ -137,11 +137,17 @@ Un admin puede forzar la publicación con:
 - `!orden_bt 3` — publica la fase 3 de BT específica
 - `!orden_gt 0` — publica la fase 0 de GT específica (signup)
 
-## Guerra Territorial (GT) — Cadencia semanal
+## Guerra Territorial (GT) — Ciclo anclado a la fecha
 
-La GT sigue un ciclo semanal fijo: con `!set_gt_date` se configura una sola vez y el bot publica automáticamente la fase correspondiente a cada día de la semana. Los 4 templates siguen definidos en MongoDB (la fase 3 se conserva pero ya no se publica):
+La GT espera el comando `!set_gt_date YYYY-MM-DD` (fecha hoy o futura). Según el día de la semana de la fecha, la GT queda activa durante una ventana y al terminar vuelve a esperar un comando:
 
-| Día | Fase | template_id | Descripción |
+- **Domingo** → ventana de **7 días** (cubre la semana completa con 2 GT)
+- **Jueves** → ventana de **3 días** (una GT)
+- **Otro día** → se muestra advertencia y la ventana es de 3 días
+
+Dentro de la ventana, cada día de la semana tiene su fase (día de la semana, no días transcurridos):
+
+| Día de la semana | Fase | template_id | Descripción |
 |:---:|:----:|-------------|-------------|
 | Domingo y jueves | 0 | `ordenes_gt_signup` | Invitación a unirse a la GT |
 | Lunes y viernes | 1 | `ordenes_gt_defensas` | Instrucciones de defensa por zona |
