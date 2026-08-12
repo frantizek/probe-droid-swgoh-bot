@@ -15,6 +15,7 @@ wheels/
 
 .env
 bot.log
+bot_data.db
 
 .idea/
 .idea/bot_data.db
