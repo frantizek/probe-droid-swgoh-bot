@@ -16,7 +16,6 @@ from datetime import datetime, timezone, date, timedelta
 from discord.ext import tasks, commands
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-from zoneinfo import ZoneInfo
 
 load_dotenv()
 
