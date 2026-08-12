@@ -82,10 +82,10 @@ class TestGetPhase:
         self._freeze_time(monkeypatch, 2026, 8, 9)  # domingo (día 7, fuera de ventana)
         assert _bot.get_phase("gt") is None
 
-    def test_gt_wednesday_no_publication_inside_window(self, tmp_db, monkeypatch):
+    def test_gt_wednesday_publishes_cierre_inside_window(self, tmp_db, monkeypatch):
         _bot.set_event_date("gt", "2026-08-02")  # domingo, ventana de 7 días
         self._freeze_time(monkeypatch, 2026, 8, 5)  # miércoles (día 3)
-        assert _bot.get_phase("gt") is None
+        assert _bot.get_phase("gt") == 3
 
     def test_gt_other_weekday_start_defaults_to_3_days(self, tmp_db, monkeypatch):
         _bot.set_event_date("gt", "2026-08-03")  # lunes (con aviso, ventana de 3 días)

@@ -12,11 +12,10 @@ import feedparser
 import logging
 import sqlite3
 import os
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone, date, timedelta, time
 from discord.ext import tasks, commands
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
-from zoneinfo import ZoneInfo
 
 load_dotenv()
 
@@ -72,16 +71,15 @@ BATTLE_TYPES = {
         },
         "phase_offset": 0,
         "max_phase": 3,
-        "post_hour": 17,
+        "post_hour": 19,
         "post_minute": 0,
-        # Ciclo anclado a la fecha: weekday() -> fase, mientras la fecha esté
-        # dentro de la ventana activa. La fase 3 (análisis/cierre) ya no se
-        # publica automáticamente (template conservado).
+        # Modo manual (modo auto detenido): ciclo anclado a la fecha de inicio
+        # con ventana según el día de la semana de esa fecha. weekday() -> fase.
         "weekday_phase": {
             6: 0,  # domingo  -> signup
             0: 1,  # lunes    -> defensas
             1: 2,  # martes   -> ataque
-            2: None,  # miércoles -> sin publicación
+            2: 3,  # miércoles -> cierre
             3: 0,  # jueves   -> signup
             4: 1,  # viernes  -> defensas
             5: 2,  # sábado   -> ataque
@@ -90,6 +88,32 @@ BATTLE_TYPES = {
         # (domingo: semana completa con 2 GT; jueves: una GT de 3 días; resto: 3).
         "duration_by_start_weekday": {6: 7, 3: 3},
     },
+}
+
+# ─────────────────────────────────────────────
+# CICLO TERRITORIAL DE 14 DÍAS (modo auto)
+# ─────────────────────────────────────────────
+# Ciclo oficial de EA: 6 días de BT + 4 días de GT#1 + 4 días de GT#2 = 14 días.
+# El día 0 es el lunes de inicio de la BT (ancla del ciclo). Con el ancla
+# persistido, el bot calcula la fase de cada día con (hoy - ancla) % 14 y
+# auto-avanza sin necesidad de que un admin alimente fechas.
+CYCLE_LENGTH = 14
+
+CYCLE_DAY_EVENT = {
+    0: ("bt", 1),
+    1: ("bt", 2),
+    2: ("bt", 3),
+    3: ("bt", 4),
+    4: ("bt", 5),
+    5: ("bt", 6),
+    6: ("gt", 0),
+    7: ("gt", 1),
+    8: ("gt", 2),
+    9: ("gt", 3),
+    10: ("gt", 0),
+    11: ("gt", 1),
+    12: ("gt", 2),
+    13: ("gt", 3),
 }
 
 SOURCES = [
@@ -127,6 +151,11 @@ def init_db():
     conn.execute("CREATE TABLE IF NOT EXISTS seen_posts (post_id TEXT PRIMARY KEY)")
     conn.execute("CREATE TABLE IF NOT EXISTS bt_config (id INTEGER PRIMARY KEY, start_date TEXT, updated_at TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS event_dates (event_type TEXT PRIMARY KEY, start_date TEXT, updated_at TEXT)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS territorial_auto "
+        "(id INTEGER PRIMARY KEY, auto_enabled INTEGER NOT NULL DEFAULT 0, anchor_date TEXT, updated_at TEXT)"
+    )
+    conn.execute("INSERT OR IGNORE INTO territorial_auto (id, auto_enabled) VALUES (1, 0)")
 
     # Migrar datos viejos de bt_config a event_dates si existen
     row = conn.execute("SELECT start_date FROM bt_config WHERE id = 1").fetchone()
@@ -191,6 +220,60 @@ def get_bt_start_date() -> str | None:
 
 def set_bt_start_date(start_date: str) -> bool:
     return set_event_date("bt", start_date)
+
+
+def get_auto_mode() -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute("SELECT auto_enabled FROM territorial_auto WHERE id = 1").fetchone()
+        conn.close()
+        return bool(row and row[0])
+    except Exception as e:
+        log.error("Error leyendo modo automático: %s", e)
+        return False
+
+
+def set_auto_mode(enabled: bool) -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "UPDATE territorial_auto SET auto_enabled = ?, updated_at = datetime('now') WHERE id = 1",
+            (1 if enabled else 0,),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        log.error("Error guardando modo automático: %s", e)
+        return False
+
+
+def get_cycle_anchor() -> date | None:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute("SELECT anchor_date FROM territorial_auto WHERE id = 1").fetchone()
+        conn.close()
+        if row and row[0]:
+            return date.fromisoformat(row[0])
+        return None
+    except Exception as e:
+        log.error("Error leyendo ancla del ciclo: %s", e)
+        return None
+
+
+def set_cycle_anchor(anchor: date) -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "UPDATE territorial_auto SET anchor_date = ?, updated_at = datetime('now') WHERE id = 1",
+            (anchor.isoformat(),),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        log.error("Error guardando ancla del ciclo: %s", e)
+        return False
 
 
 # ─────────────────────────────────────────────
@@ -262,7 +345,47 @@ def gt_in_window(event_type: str, start: date, today: date) -> bool:
     return 0 <= (today - start).days < duration
 
 
-def get_phase(event_type: str) -> int | None:
+def resolve_cycle_anchor(fecha: str | None) -> tuple[date | None, bool]:
+    """Resuelve y alinea al lunes el ancla del ciclo para el modo auto.
+
+    Prioridad: fecha indicada por el admin > fecha de BT guardada > hoy.
+    Devuelve ``(ancla, se_alineo)`` donde ``ancla`` siempre es un lunes (día de
+    inicio de BT) y ``se_alineo`` indica si la fecha candidata no era lunes.
+    Devuelve ``(None, False)`` si la fecha indicada tiene formato inválido.
+    """
+    if fecha:
+        try:
+            candidate = date.fromisoformat(fecha)
+        except ValueError:
+            return None, False
+    else:
+        bt_start = get_event_date("bt")
+        if bt_start:
+            try:
+                candidate = date.fromisoformat(bt_start)
+            except ValueError:
+                candidate = datetime.now(timezone.utc).date()
+        else:
+            candidate = datetime.now(timezone.utc).date()
+    aligned = candidate - timedelta(days=candidate.weekday())
+    return aligned, aligned != candidate
+
+
+def get_cycle_phase(event_type: str) -> int | None:
+    """Fase de hoy para el evento según el ciclo de 14 días anclado (modo auto)."""
+    anchor = get_cycle_anchor()
+    if anchor is None:
+        return None
+    today = datetime.now(timezone.utc).date()
+    if today < anchor:
+        return None
+    entry = CYCLE_DAY_EVENT.get((today - anchor).days % CYCLE_LENGTH)
+    if entry is None or entry[0] != event_type:
+        return None
+    return entry[1]
+
+
+def _get_phase_manual(event_type: str) -> int | None:
     cfg = BATTLE_TYPES.get(event_type)
     if not cfg:
         return None
@@ -289,8 +412,14 @@ def get_phase(event_type: str) -> int | None:
         return None
 
 
+def get_phase(event_type: str) -> int | None:
+    if get_auto_mode():
+        return get_cycle_phase(event_type)
+    return _get_phase_manual(event_type)
+
+
 def get_order_date(event_type: str, start: date, phase: int) -> date:
-    if BATTLE_TYPES[event_type].get("weekday_phase") is not None:
+    if get_auto_mode() or BATTLE_TYPES[event_type].get("weekday_phase") is not None:
         return datetime.now(timezone.utc).date()
     return start + timedelta(days=phase - BATTLE_TYPES[event_type]["phase_offset"])
 
@@ -343,6 +472,37 @@ PUBLISH_FOOTERS = {
 }
 
 
+def build_order_embed(event_type: str, phase: int, order: str) -> discord.Embed:
+    """Construye el embed de una orden con su encabezado de fecha.
+
+    En modo auto la fecha del encabezado es hoy (la fase del día según el
+    ciclo). En modo manual se usa la fecha derivada de la configuración.
+    """
+    cfg = BATTLE_TYPES[event_type]
+    start = None
+    if get_auto_mode():
+        start = get_cycle_anchor()
+    else:
+        start_str = get_event_date(event_type)
+        if start_str:
+            start = date.fromisoformat(start_str)
+
+    if start is not None:
+        current_date = get_order_date(event_type, start, phase)
+        full_message = f"{format_weekday_date_es(current_date)}\n\n{order}"
+    else:
+        full_message = f"**Fase {phase}**\n\n{order}"
+
+    embed = discord.Embed(
+        title=f"{cfg['name']} — Fase {phase}",
+        description=full_message,
+        color=PUBLISH_COLORS.get(event_type, discord.Color.default()),
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_footer(text=PUBLISH_FOOTERS.get(event_type, "Sonda Droid"))
+    return embed
+
+
 async def publish_order(event_type: str):
     cfg = BATTLE_TYPES.get(event_type)
     if not cfg:
@@ -367,22 +527,7 @@ async def publish_order(event_type: str):
         log.warning("No hay orden para %s fase %s", event_type, phase)
         return
 
-    start_str = get_event_date(event_type)
-    if start_str:
-        start = date.fromisoformat(start_str)
-        current_date = get_order_date(event_type, start, phase)
-        full_message = f"{format_weekday_date_es(current_date)}\n\n{order}"
-    else:
-        full_message = f"**Fase {phase}**\n\n{order}"
-
-    embed = discord.Embed(
-        title=f"{cfg['name']} — Fase {phase}",
-        description=full_message,
-        color=PUBLISH_COLORS.get(event_type, discord.Color.default()),
-        timestamp=datetime.now(timezone.utc),
-    )
-    embed.set_footer(text=PUBLISH_FOOTERS.get(event_type, "Sonda Droid"))
-
+    embed = build_order_embed(event_type, phase, order)
     await channel.send(embed=embed)
     log.info("%s fase %s publicada en canal %s", event_type, phase, cfg["channel"])
 
@@ -390,12 +535,16 @@ async def publish_order(event_type: str):
 # ─────────────────────────────────────────────
 # TAREAS PROGRAMADAS
 # ─────────────────────────────────────────────
-@tasks.loop(time=datetime.strptime("17:00:00", "%H:%M:%S").time())
+def task_time(hour: int, minute: int) -> time:
+    return time(hour, minute)
+
+
+@tasks.loop(time=task_time(BATTLE_TYPES["bt"]["post_hour"], BATTLE_TYPES["bt"]["post_minute"]))
 async def daily_bt_order():
     await publish_order("bt")
 
 
-@tasks.loop(time=datetime.strptime("17:00:00", "%H:%M:%S").time())
+@tasks.loop(time=task_time(BATTLE_TYPES["gt"]["post_hour"], BATTLE_TYPES["gt"]["post_minute"]))
 async def daily_gt_order():
     await publish_order("gt")
 
@@ -478,23 +627,39 @@ async def estado(ctx):
     )
     embed.add_field(name="RSS Codes", value=f"Cada {CHECK_EVERY} min en <#{CODE_ALERTS_CHANNEL_ID}>", inline=False)
 
+    auto_mode = get_auto_mode()
+    anchor = get_cycle_anchor()
+    embed.add_field(
+        name="⚙️ Avisos territoriales",
+        value=(
+            f"Modo automático: {'✅ Activado' if auto_mode else '⏸️ Detenido'}\n"
+            f"Ancla del ciclo: `{anchor.isoformat() if anchor else 'no configurada'}`\n"
+            "Ciclo: BT 17:00 UTC · GT 19:00 UTC"
+        ),
+        inline=False,
+    )
+
     today = datetime.now(timezone.utc).date()
     for key in ("bt", "gt"):
         cfg = BATTLE_TYPES[key]
-        start = get_event_date(key)
         phase = get_phase(key)
-        if start:
-            info = f"Inicio: {start}"
+        if auto_mode:
             if phase is not None:
-                info += f" | Fase actual: {phase}"
-            elif date.fromisoformat(start) > today:
-                info += " | Por iniciar"
-            elif key == "gt" and gt_in_window(key, date.fromisoformat(start), today):
-                info += " | Ciclo semanal activo (sin publicación hoy)"
+                info = f"Fase actual: {phase}"
             else:
-                info += " | Finalizada"
+                info = "Sin publicación hoy"
         else:
-            info = "No configurada"
+            start = get_event_date(key)
+            if start:
+                info = f"Inicio: {start}"
+                if phase is not None:
+                    info += f" | Fase actual: {phase}"
+                elif date.fromisoformat(start) > today:
+                    info += " | Por iniciar"
+                else:
+                    info += " | Finalizada"
+            else:
+                info = "No configurada"
         post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
         embed.add_field(
             name=f"{cfg['name']} ({cfg['name_short']})",
@@ -512,6 +677,14 @@ async def _set_date_cmd(ctx, event_type: str, fecha: str | None):
 
     if not is_authorized(ctx):
         await ctx.send("🚫 No tienes permisos para usar este comando.")
+        return
+
+    if get_auto_mode():
+        await ctx.send(
+            "⚠️ El modo automático de avisos territoriales está **activado**; "
+            "las fechas manuales se ignoran. Usa `!avisos_territoriales detener` "
+            "para desactivarlo."
+        )
         return
 
     cmd_name = f"!set_{event_type}_date"
@@ -587,19 +760,11 @@ async def _orden_cmd(ctx, event_type: str, fase: str | None):
     else:
         phase = get_phase(event_type)
         if phase is None:
-            if event_type == "gt":
-                start_str = get_event_date(event_type)
-                if start_str and gt_in_window(
-                    event_type, date.fromisoformat(start_str), datetime.now(timezone.utc).date()
-                ):
-                    await ctx.send(
-                        "⚠️ Hoy no hay publicación de GT (miércoles, día de descanso). "
-                        f"Prueba `{cmd_name} <0-3>` con una fase concreta."
-                    )
-                else:
-                    await ctx.send(f"⚠️ No hay {cfg['name_short']} activa. Configura la fecha con `!set_{event_type}_date YYYY-MM-DD`")
-            else:
-                await ctx.send(f"⚠️ No hay {cfg['name_short']} activa. Configura la fecha con `!set_{event_type}_date YYYY-MM-DD`")
+            await ctx.send(
+                f"⚠️ No hay {cfg['name_short']} activa para hoy. Configura la fecha "
+                f"con `!set_{event_type}_date YYYY-MM-DD` (modo auto detenido) o "
+                "activa los avisos con `!avisos_territoriales iniciar`."
+            )
             return
 
     order = get_template_order(cfg["templates"], phase)
@@ -607,21 +772,7 @@ async def _orden_cmd(ctx, event_type: str, fase: str | None):
         await ctx.send(f"⚠️ No se encontró orden para la fase {phase} en MongoDB.")
         return
 
-    start_str = get_event_date(event_type)
-    if start_str:
-        start = date.fromisoformat(start_str)
-        current_date = get_order_date(event_type, start, phase)
-        full_message = f"{format_weekday_date_es(current_date)}\n\n{order}"
-    else:
-        full_message = f"**Fase {phase}**\n\n{order}"
-
-    embed = discord.Embed(
-        title=f"{cfg['name']} — Fase {phase}",
-        description=full_message,
-        color=PUBLISH_COLORS.get(event_type, discord.Color.default()),
-        timestamp=datetime.now(timezone.utc),
-    )
-    embed.set_footer(text=PUBLISH_FOOTERS.get(event_type, "Sonda Droid"))
+    embed = build_order_embed(event_type, phase, order)
 
     await ctx.send(embed=embed)
     log.info("%s fase %s publicada por admin %s", event_type, phase, ctx.author.id)
@@ -635,6 +786,68 @@ async def orden_bt(ctx, fase: str = None):
 @bot.command()
 async def orden_gt(ctx, fase: str = None):
     await _orden_cmd(ctx, "gt", fase)
+
+
+async def _avisos_cmd(ctx, accion: str | None, fecha: str | None):
+    if not is_authorized(ctx):
+        await ctx.send("🚫 No tienes permisos para usar este comando.")
+        return
+
+    if accion is None:
+        estado = "✅ Activado" if get_auto_mode() else "⏸️ Detenido"
+        anchor = get_cycle_anchor()
+        anchor_txt = anchor.isoformat() if anchor else "no configurado"
+        await ctx.send(
+            f"Modo automático de avisos territoriales: **{estado}**\n"
+            f"Ancla del ciclo (lunes de BT): `{anchor_txt}`\n\n"
+            "Uso:\n"
+            "`!avisos_territoriales iniciar [YYYY-MM-DD]` — Activar. El ancla será "
+            "la fecha indicada, la fecha de BT guardada o el lunes más reciente.\n"
+            "`!avisos_territoriales detener` — Desactivar"
+        )
+        return
+
+    if accion == "detener":
+        if set_auto_mode(False):
+            await ctx.send(
+                "⏸️ Avisos territoriales automáticos **detenidos**. "
+                "`!set_bt_date`/`!set_gt_date` vuelven a funcionar."
+            )
+            log.info("Modo auto territorial detenido por admin %s", ctx.author.id)
+        else:
+            await ctx.send("❌ Error al detener el modo automático.")
+        return
+
+    if accion == "iniciar":
+        anchor, aligned = resolve_cycle_anchor(fecha)
+        if anchor is None:
+            await ctx.send(
+                "⚠️ Formato de fecha inválido. Usa YYYY-MM-DD\n"
+                "Ejemplo: `!avisos_territoriales iniciar 2026-08-03`"
+            )
+            return
+        if aligned:
+            await ctx.send(
+                f"⚠️ Advertencia: el ancla no es lunes (día de inicio de BT). "
+                f"Se usará el lunes anterior más cercano: `{anchor.isoformat()}`"
+            )
+        if set_cycle_anchor(anchor) and set_auto_mode(True):
+            await ctx.send(
+                f"✅ Avisos territoriales automáticos **activados**.\n"
+                f"Ancla del ciclo: `{anchor.isoformat()}`\n"
+                "BT se publica a las 17:00 UTC · GT a las 19:00 UTC."
+            )
+            log.info("Modo auto territorial activado con ancla %s por admin %s", anchor, ctx.author.id)
+        else:
+            await ctx.send("❌ Error al guardar la configuración.")
+        return
+
+    await ctx.send("⚠️ Acción inválida. Usa `iniciar` o `detener`.")
+
+
+@bot.command()
+async def avisos_territoriales(ctx, accion: str = None, fecha: str = None):
+    await _avisos_cmd(ctx, accion, fecha)
 
 
 @bot.command()
@@ -657,6 +870,16 @@ async def ayuda(ctx):
     )
 
     embed.add_field(
+        name="⚙️ Avisos territoriales",
+        value=(
+            "`!avisos_territoriales` — Estado del modo automático\n"
+            "`!avisos_territoriales iniciar [YYYY-MM-DD]` — Activar avisos automáticos (ancla: lunes de BT)\n"
+            "`!avisos_territoriales detener` — Detener avisos automáticos"
+        ),
+        inline=False,
+    )
+
+    embed.add_field(
         name="🎁 Códigos RSS",
         value=f"Publicación automática cada {CHECK_EVERY} min en <#{CODE_ALERTS_CHANNEL_ID}>",
         inline=False,
@@ -670,15 +893,13 @@ async def ayuda(ctx):
         cadence = ""
         if key == "gt":
             cadence = (
-                "Cadencia GT: fecha en domingo = 7 días · jueves = 3 días · "
-                "otro día = 3 días\n"
-                "Fases: signup (dom/jue) · defensas (lun/vie) · ataque (mar/sáb) · "
-                "miércoles descanso\n"
+                "Ciclo GT: 2 GT de 4 días por ciclo de 14 días "
+                "(signup, defensas, ataque, cierre)\n"
             )
         embed.add_field(
             name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
             value=(
-                f"`!set_{key}_date YYYY-MM-DD` — Configurar fecha de inicio\n"
+                f"`!set_{key}_date YYYY-MM-DD` — Configurar fecha de inicio (solo con modo auto detenido)\n"
                 f"`!orden_{key} <{start_phase}-{end_phase}>` — Publicar fase específica\n"
                 f"`!orden_{key}` — Publicar fase actual\n"
                 f"{cadence}"
