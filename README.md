@@ -10,8 +10,9 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
-- **Órdenes GT**: Ciclo anclado a la fecha (17:00 UTC) de Guerra Territorial: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado); 7 días si la fecha es domingo, 3 si es jueves
-- **Comandos admin**: `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
+- **Órdenes GT**: Publicación automática diaria (19:00 UTC) de órdenes de Guerra Territorial desde MongoDB
+- **Avisos territoriales automáticos**: Modo auto (`!avisos_territoriales`) que calcula el ciclo oficial de 14 días (6 días BT + 4 días GT#1 + 4 días GT#2) sin alimentar fechas manuales
+- **Comandos admin**: `!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
 
 ## Fuentes Monitorizadas
 
@@ -94,7 +95,7 @@ ADMIN_USER_IDS=id_usuario_discord,otro_id_usuario
 
 ### Autorización
 
-Los comandos admin (`!set_bt_date`, `!set_gt_date`, `!orden_bt`, `!orden_gt`) están disponibles para usuarios con los siguientes permisos en el servidor: **Administrador**, **Gestionar Servidor**, **Expulsar Miembros** o **Banear Miembros** (cubren perfiles de admin y oficial). También funcionan por MD para los IDs de Discord incluidos en `ADMIN_USER_IDS`.
+Los comandos admin (`!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!orden_bt`, `!orden_gt`) están disponibles para usuarios con los siguientes permisos en el servidor: **Administrador**, **Gestionar Servidor**, **Expulsar Miembros** o **Banear Miembros** (cubren perfiles de admin y oficial). También funcionan por MD para los IDs de Discord incluidos en `ADMIN_USER_IDS`.
 
 ## Comandos
 
@@ -102,8 +103,11 @@ Los comandos admin (`!set_bt_date`, `!set_gt_date`, `!orden_bt`, `!orden_gt`) es
 |---------|-------|-------------|
 | `!estado` | No | Muestra el estado operativo del bot y configuración BT/GT |
 | `!ayuda` | Sí | Muestra los comandos disponibles |
-| `!set_bt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la BT |
-| `!set_gt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la GT (domingo o jueves inician en fase 0) |
+| `!avisos_territoriales` | Sí | Muestra el estado del modo automático de avisos territoriales |
+| `!avisos_territoriales iniciar [YYYY-MM-DD]` | Sí | Activa los avisos automáticos (ancla: fecha indicada, fecha de BT guardada o lunes más reciente) |
+| `!avisos_territoriales detener` | Sí | Detiene los avisos automáticos |
+| `!set_bt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la BT (solo con modo auto detenido) |
+| `!set_gt_date YYYY-MM-DD` | Sí | Configura la fecha de inicio de la GT (solo con modo auto detenido) |
 | `!orden_bt <1-6>` | Sí | Publica la orden BT de una fase específica |
 | `!orden_bt` | Sí | Publica la orden BT de la fase actual |
 | `!orden_gt <0-3>` | Sí | Publica la orden GT de una fase específica |
@@ -111,9 +115,11 @@ Los comandos admin (`!set_bt_date`, `!set_gt_date`, `!orden_bt`, `!orden_gt`) es
 
 ## Órdenes de Batalla Territorial (BT)
 
-El bot publica automáticamente las órdenes de BT y GT cada día a las **17:00 UTC** en sus respectivos canales configurados.
+El bot publica automáticamente las órdenes de BT a las **17:00 UTC** y las de GT a las **19:00 UTC** en sus respectivos canales configurados.
 
-### Flujo de publicación
+### Flujo de publicación (modo manual)
+
+> Con el **modo auto** activado (`!avisos_territoriales iniciar`) el bot deriva las fases del ciclo de 14 días y no hace falta configurar fechas. El flujo siguiente es para el modo manual (modo auto detenido).
 
 1. El admin configura la fecha de inicio de BT con `!set_bt_date 2026-07-06`
 2. El bot calcula la fase actual: `días desde inicio + 1`
@@ -137,25 +143,50 @@ Un admin puede forzar la publicación con:
 - `!orden_bt 3` — publica la fase 3 de BT específica
 - `!orden_gt 0` — publica la fase 0 de GT específica (signup)
 
-## Guerra Territorial (GT) — Ciclo anclado a la fecha
+## Guerra Territorial (GT) — Ciclo de 14 días
 
-La GT espera el comando `!set_gt_date YYYY-MM-DD` (fecha hoy o futura). Según el día de la semana de la fecha, la GT queda activa durante una ventana y al terminar vuelve a esperar un comando:
+La GT sigue el **ciclo oficial de 14 días** de EA junto con la BT: 6 días de BT + 4 días de GT#1 + 4 días de GT#2, sin solapamiento. El ancla del ciclo es el **lunes de inicio de la BT**.
+
+### Modo automático (recomendado)
+
+Con `!avisos_territoriales iniciar [YYYY-MM-DD]` el bot activa los avisos automáticos y calcula cada día la fase correspondiente con `(hoy - ancla) % 14`, sin que el admin tenga que alimentar fechas. El ancla se guarda en SQLite y el ciclo avanza solo cada 14 días.
+
+- Se usa la fecha indicada, la **fecha de BT guardada** o el **lunes más reciente** como ancla, siempre alineado al lunes (día de inicio de BT).
+- Se toma la BT **previa** como referencia, de modo que no quedan días sin publicación (ej.: con ancla lunes 03/08, el miércoles 12/08 es GT#1 cierre y el jueves 13/08 GT#2 signup).
+- `!avisos_territoriales detener` vuelve al modo manual. Mientras el modo auto esté activo, `!set_bt_date` y `!set_gt_date` se ignoran con un aviso.
+
+### Fases del ciclo
+
+| Día | Semana | Evento | Fase | template_id |
+|:--:|:--:|:--:|:--:|-------------|
+| 0 | Lunes | BT | 1 | `ordenes_fase_1` |
+| 1 | Martes | BT | 2 | `ordenes_fase_2` |
+| 2 | Miércoles | BT | 3 | `ordenes_fase_3` |
+| 3 | Jueves | BT | 4 | `ordenes_fase_4` |
+| 4 | Viernes | BT | 5 | `ordenes_fase_5_mandalore` |
+| 5 | Sábado | BT | 6 | `ordenes_fase_6_mandalore` |
+| 6 | Domingo | GT#1 | 0 signup | `ordenes_gt_signup` |
+| 7 | Lunes | GT#1 | 1 defensas | `ordenes_gt_defensas` |
+| 8 | Martes | GT#1 | 2 ataque | `ordenes_gt_ataque` |
+| 9 | Miércoles | GT#1 | 3 cierre | `ordenes_gt_cierre` |
+| 10 | Jueves | GT#2 | 0 signup | `ordenes_gt_signup` |
+| 11 | Viernes | GT#2 | 1 defensas | `ordenes_gt_defensas` |
+| 12 | Sábado | GT#2 | 2 ataque | `ordenes_gt_ataque` |
+| 13 | Domingo | GT#2 | 3 cierre | `ordenes_gt_cierre` |
+
+> La fase 3 (cierre/review) **sí se publica**; el contenido depende del template en MongoDB.
+
+### Modo manual (fallback)
+
+Con el modo auto detenido, `!set_gt_date YYYY-MM-DD` fija la fecha de inicio y la GT queda activa durante una ventana según el día de la semana:
 
 - **Domingo** → ventana de **7 días** (cubre la semana completa con 2 GT)
 - **Jueves** → ventana de **3 días** (una GT)
 - **Otro día** → se muestra advertencia y la ventana es de 3 días
 
-Dentro de la ventana, cada día de la semana tiene su fase (día de la semana, no días transcurridos):
+Dentro de la ventana las fases siguen el día de la semana: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado) y cierre (miércoles/domingo).
 
-| Día de la semana | Fase | template_id | Descripción |
-|:---:|:----:|-------------|-------------|
-| Domingo y jueves | 0 | `ordenes_gt_signup` | Invitación a unirse a la GT |
-| Lunes y viernes | 1 | `ordenes_gt_defensas` | Instrucciones de defensa por zona |
-| Martes y sábado | 2 | `ordenes_gt_ataque` | Instrucciones de ataque |
-| Miércoles | — | — | Sin publicación (descanso) |
-| — | 3 | `ordenes_gt_cierre` | Cierre y resultados (no se publica) |
-
-> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **17:00 UTC** (mismo horario que BT).
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **19:00 UTC**.
 
 ## Despliegue en Oracle Cloud (Free Tier)
 
@@ -280,7 +311,7 @@ sudo journalctl -u probe-droid --since "5 min ago"
 
 - `Shard ID None has connected to Gateway`
 - `[INFO] Sonda v5 activa como probe-droid-swgoh-bot#2600`
-- `[INFO] RSS scan: cada 15 min | BT daily: 17:00 UTC | GT daily: 17:00 UTC`
+- `[INFO] RSS scan: cada 15 min | BT daily: 17:00 UTC | GT daily: 19:00 UTC`
 
 **Mensajes normales que NO son errores:**
 
