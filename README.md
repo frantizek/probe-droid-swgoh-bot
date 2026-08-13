@@ -10,7 +10,7 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
-- **Órdenes GT**: Publicación automática diaria (19:00 UTC) de órdenes de Guerra Territorial desde MongoDB
+- **Órdenes GT**: Publicación automática diaria (18:00 UTC) de órdenes de Guerra Territorial desde MongoDB
 - **Avisos territoriales automáticos**: Modo auto (`!avisos_territoriales`) que calcula el ciclo oficial de 14 días (6 días BT + 4 días GT#1 + 4 días GT#2) sin alimentar fechas manuales
 - **Comandos admin**: `!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
 
@@ -115,7 +115,7 @@ Los comandos admin (`!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!o
 
 ## Órdenes de Batalla Territorial (BT)
 
-El bot publica automáticamente las órdenes de BT a las **17:00 UTC** y las de GT a las **19:00 UTC** en sus respectivos canales configurados.
+El bot publica automáticamente las órdenes de BT a las **17:00 UTC** y las de GT a las **18:00 UTC** en sus respectivos canales configurados.
 
 ### Flujo de publicación (modo manual)
 
@@ -186,7 +186,7 @@ Con el modo auto detenido, `!set_gt_date YYYY-MM-DD` fija la fecha de inicio y l
 
 Dentro de la ventana las fases siguen el día de la semana: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado) y cierre (miércoles/domingo).
 
-> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **19:00 UTC**.
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **18:00 UTC**.
 
 ## Despliegue en Oracle Cloud (Free Tier)
 
@@ -311,7 +311,7 @@ sudo journalctl -u probe-droid --since "5 min ago"
 
 - `Shard ID None has connected to Gateway`
 - `[INFO] Sonda v5 activa como probe-droid-swgoh-bot#2600`
-- `[INFO] RSS scan: cada 15 min | BT daily: 17:00 UTC | GT daily: 19:00 UTC`
+- `[INFO] RSS scan: cada 15 min | BT daily: 17:00 UTC | GT daily: 18:00 UTC`
 
 **Mensajes normales que NO son errores:**
 
