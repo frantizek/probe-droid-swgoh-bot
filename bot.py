@@ -71,7 +71,7 @@ BATTLE_TYPES = {
         },
         "phase_offset": 0,
         "max_phase": 3,
-        "post_hour": 19,
+        "post_hour": 18,
         "post_minute": 0,
         # Modo manual (modo auto detenido): ciclo anclado a la fecha de inicio
         # con ventana según el día de la semana de esa fecha. weekday() -> fase.
@@ -634,7 +634,7 @@ async def estado(ctx):
         value=(
             f"Modo automático: {'✅ Activado' if auto_mode else '⏸️ Detenido'}\n"
             f"Ancla del ciclo: `{anchor.isoformat() if anchor else 'no configurada'}`\n"
-            "Ciclo: BT 17:00 UTC · GT 19:00 UTC"
+            "Ciclo: BT 17:00 UTC · GT 18:00 UTC"
         ),
         inline=False,
     )
@@ -835,7 +835,7 @@ async def _avisos_cmd(ctx, accion: str | None, fecha: str | None):
             await ctx.send(
                 f"✅ Avisos territoriales automáticos **activados**.\n"
                 f"Ancla del ciclo: `{anchor.isoformat()}`\n"
-                "BT se publica a las 17:00 UTC · GT a las 19:00 UTC."
+                "BT se publica a las 17:00 UTC · GT a las 18:00 UTC."
             )
             log.info("Modo auto territorial activado con ancla %s por admin %s", anchor, ctx.author.id)
         else:

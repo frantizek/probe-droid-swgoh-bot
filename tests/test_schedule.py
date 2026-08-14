@@ -9,7 +9,7 @@ class TestBattleTypesSchedule:
 
     def test_gt_post_time(self):
         cfg = bot.BATTLE_TYPES["gt"]
-        assert cfg["post_hour"] == 19
+        assert cfg["post_hour"] == 18
         assert cfg["post_minute"] == 0
 
     def test_bt_and_gt_have_different_post_times(self):
