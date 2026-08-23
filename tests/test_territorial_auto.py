@@ -153,7 +153,154 @@ class TestResolveCycleAnchor:
         assert _bot.resolve_cycle_anchor(None) == (date(2026, 8, 10), True)
 
 
-class TestManualDatesIgnoredInAutoMode:
+class TestGtSlots:
+    def test_gt_slots_mapping(self):
+        expected = {6: (6, 19), 7: (0, 19), 8: (1, 18), 9: (2, 18), 10: (3, 18), 11: (4, 18), 12: (5, 17), 13: (6, 17)}
+        assert _bot.GT_SLOTS == expected
+
+    def test_gt_slot_6_sunday_nineteen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))  # lunes -> día 0
+        _bot.set_auto_mode(True)
+        # frozen a Sunday at 19:00 UTC = day 6
+        self._freeze_utc(monkeypatch, 2026, 8, 23, 19, 0)  # domingo 19:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_7_monday_nineteen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Monday at 19:00 UTC = day 7
+        self._freeze_utc(monkeypatch, 2026, 8, 24, 19, 0)  # lunes 19:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_8_tuesday_eighteen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Tuesday at 18:00 UTC = day 8
+        self._freeze_utc(monkeypatch, 2026, 8, 25, 18, 0)  # martes 18:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_9_wednesday_eighteen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Wednesday at 18:00 UTC = day 9
+        self._freeze_utc(monkeypatch, 2026, 8, 26, 18, 0)  # miércoles 18:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_10_thursday_eighteen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Thursday at 18:00 UTC = day 10
+        self._freeze_utc(monkeypatch, 2026, 8, 27, 18, 0)  # jueves 18:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_11_friday_eighteen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Friday at 18:00 UTC = day 11
+        self._freeze_utc(monkeypatch, 2026, 8, 28, 18, 0)  # viernes 18:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_12_saturday_seventeen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Saturday at 17:00 UTC = day 12
+        self._freeze_utc(monkeypatch, 2026, 8, 29, 17, 0)  # sábado 17:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_gt_slot_13_sunday_seventeen(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a Sunday at 17:00 UTC = day 13
+        self._freeze_utc(monkeypatch, 2026, 8, 30, 17, 0)  # domingo 17:00
+        assert _bot._gt_slot_matches() is True
+
+    def test_no_slot_outside_gt_days(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 3))
+        _bot.set_auto_mode(True)
+        # frozen a BT day (e.g. day 1 Tuesday) at noon -> should be False
+        # day 1 with anchor 2026-08-03 = 2026-08-04 (mon). Day 1 is BT.
+        # Let's use a day that's not in GT_SLOTS (day 0-5 are BT)
+        # Actually all days 6-13 are GT, days 0-5 are BT
+        # Freeze a BT day at any hour -> should be False
+        # Day 0 with anchor: 2026-08-03, so day -3 would be before anchor
+        # Let's just freeze a day that maps to a BT day
+        # With anchor 2026-08-03, cycle day 0 = 2026-08-03 (mon)
+        # So day 0 is BT, freeze at 2026-08-03 12:00
+        self._freeze_utc(monkeypatch, 2026, 8, 3, 12, 0)  # lunes 12:00 = día 0 BT
+        assert _bot._gt_slot_matches() is False
+
+    def test_no_slot_without_anchor(self, tmp_db, monkeypatch):
+        _bot.set_auto_mode(True)
+        # No anchor set
+        self._freeze_utc(monkeypatch, 2026, 8, 24, 19, 0)
+        assert _bot._gt_slot_matches() is False
+
+    def test_no_slot_before_anchor(self, tmp_db, monkeypatch):
+        _bot.set_cycle_anchor(date(2026, 8, 17))
+        _bot.set_auto_mode(True)
+        # before anchor date
+        self._freeze_utc(monkeypatch, 2026, 8, 16, 19, 0)
+        assert _bot._gt_slot_matches() is False
+
+    def _freeze_utc(self, monkeypatch, year, month, day, hour, minute):
+        class FakeDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                tz = tz or timezone.utc
+                return datetime.datetime(year, month, day, hour, minute, 0, tzinfo=tz)
+
+            @classmethod
+            def fromisoformat(cls, s):
+                return datetime.date.fromisoformat(s)
+
+        monkeypatch.setattr(_bot, "datetime", FakeDateTime)
+
+
+class TestGapBA:
+    """Tests for the gap between GT-A close and GT-B open."""
+
+    def _freeze_utc(self, monkeypatch, year, month, day, hour, minute):
+        class FakeDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                tz = tz or timezone.utc
+                return datetime.datetime(year, month, day, hour, minute, 0, tzinfo=tz)
+
+            @classmethod
+            def fromisoformat(cls, s):
+                return datetime.date.fromisoformat(s)
+
+        monkeypatch.setattr(_bot, "datetime", FakeDateTime)
+
+    def test_no_gt_alert_between_9_18_and_10_18(self, tmp_db, monkeypatch):
+        """Verify no GT alert is published between day 9 18:00 UTC and day 10 18:00 UTC."""
+        _bot.set_cycle_anchor(date(2026, 8, 3))  # lunes, day 0
+        _bot.set_auto_mode(True)
+
+        # Day 9 = Wednesday, should close A at 18:00
+        # Day 10 = Thursday, should open B at 18:00
+        # Between these there should be no GT alert
+
+        # Simulate just after day 9 18:00 (Thursday 00:00) - no GT should fire
+        self._freeze_utc(monkeypatch, 2026, 8, 27, 0, 0)  # jueves 00:00 = día 10 pero antes las 18:00
+        assert _bot._gt_slot_matches() is False
+
+        # At day 9 18:00 exactly (Wednesday 18:00) - this IS a GT slot (should match)
+        self._freeze_utc(monkeypatch, 2026, 8, 26, 18, 0)  # miércoles 18:00 = día 9
+        assert _bot._gt_slot_matches() is True
+
+        # Just after day 9 18:00 (Wednesday 19:00) - should NOT match day 9 (wrong hour)
+        # and should NOT match day 10 yet (wrong day)
+        self._freeze_utc(monkeypatch, 2026, 8, 26, 19, 0)  # miércoles 19:00
+        assert _bot._gt_slot_matches() is False
+
+        # At day 10 18:00 exactly (Thursday 18:00) - should match day 10 slot
+        self._freeze_utc(monkeypatch, 2026, 8, 27, 18, 0)  # jueves 18:00 = día 10
+        assert _bot._gt_slot_matches() is True
+
+        # Just after day 10 18:00 (Thursday 19:00) - should NOT match
+        self._freeze_utc(monkeypatch, 2026, 8, 27, 19, 0)  # jueves 19:00
+        assert _bot._gt_slot_matches() is False
     async def test_set_bt_date_ignored_when_auto(self, tmp_db, monkeypatch):
         _bot.set_auto_mode(True)
         monkeypatch.setattr(_bot, "ADMIN_USER_IDS", {1})
