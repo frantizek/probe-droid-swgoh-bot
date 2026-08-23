@@ -116,6 +116,24 @@ CYCLE_DAY_EVENT = {
     13: ("gt", 3),
 }
 
+# ─────────────────────────────────────────────
+# MAPEO DE SLOTS GT POR DÍA DE CICLO
+# ─────────────────────────────────────────────
+# Cada día del ciclo (6-13) tiene un (weekday_calendario, hora_UTC) fijo
+# cuando el ancla está alineada a lunes (lo cual siempre ocurre al iniciar el modo auto).
+# La hora UTC y el weekday de calendario determinan cuándo disparar el job.
+# Mapeo: día_ciclo → (weekday_calendario, hora_UTC)
+GT_SLOTS: dict[int, tuple[int, int]] = {
+    6: (6, 19),   # Domingo 19:00 UTC → Inscripción Tipo A
+    7: (0, 19),   # Lunes 19:00 UTC   → Defensa Tipo A
+    8: (1, 18),   # Martes 18:00 UTC    → Ataque Tipo A
+    9: (2, 18),   # Miércoles 18:00 UTC → Fin Tipo A (automático)
+    10: (3, 18),  # Jueves 18:00 UTC    → Inscripción Tipo B
+    11: (4, 18),  # Viernes 18:00 UTC     → Defensa Tipo B
+    12: (5, 17),  # Sábado 17:00 UTC      → Ataque Tipo B
+    13: (6, 17),  # Domingo 17:00 UTC     → Fin Tipo B (automático)
+}
+
 SOURCES = [
     {
         "name": "Reddit SWGoH (Filtrado)",
@@ -539,6 +557,26 @@ def task_time(hour: int, minute: int) -> time:
     return time(hour, minute)
 
 
+def _gt_slot_matches() -> bool:
+    """Retorna True si la hora UTC actual coincide con un slot GT programado para hoy.
+
+    Calcula el día de ciclo actual y compara el (weekday, hour) actual
+    contra el esperado en GT_SLOTS. Si no hay ancla o el día no es día GT, retorna False.
+    """
+    anchor = get_cycle_anchor()
+    if anchor is None:
+        return False
+    today = datetime.now(timezone.utc).date()
+    if today < anchor:
+        return False
+    cycle_day = (today - anchor).days % CYCLE_LENGTH
+    if cycle_day not in GT_SLOTS:
+        return False
+    expected_weekday, expected_hour = GT_SLOTS[cycle_day]
+    now = datetime.now(timezone.utc)
+    return now.weekday() == expected_weekday and now.hour == expected_hour
+
+
 @tasks.loop(time=task_time(BATTLE_TYPES["bt"]["post_hour"], BATTLE_TYPES["bt"]["post_minute"]))
 async def daily_bt_order():
     await publish_order("bt")
@@ -546,6 +584,8 @@ async def daily_bt_order():
 
 @tasks.loop(time=task_time(BATTLE_TYPES["gt"]["post_hour"], BATTLE_TYPES["gt"]["post_minute"]))
 async def daily_gt_order():
+    if not _gt_slot_matches():
+        return  # no es hora programada para hoy; silently skip
     await publish_order("gt")
 
 
@@ -638,6 +678,22 @@ async def estado(ctx):
         ),
         inline=False,
     )
+
+    # Tabla de horarios GT (fija por día de ciclo, ancla = lunes)
+    gt_schedule = (
+        "📅 **Horario GT**\n"
+        "Día ciclo | Semana | Hora UTC | Evento\n"
+        "----------|--------|----------|---------\n"
+        f"   6      |   Dom  |   19:00  | A · Inscripción (fase 0) ✅\n"
+        f"   7      |   Lun  |   19:00  | A · Defensa/configuración (fase 1) ✅\n"
+        f"   8      |   Mar  |   18:00  | A · Ataque (fase 2) ✅\n"
+        f"   9      |   Mié  |   18:00  | A · Fin (fase 3) ✅ automático\n"
+        f"   10     |   Jue  |   18:00  | B · Inscripción (fase 0) ✅\n"
+        f"   11     |   Vie  |   18:00  | B · Defensa/configuración (fase 1) ✅\n"
+        f"   12     |   Sáb  |   17:00  | B · Ataque (fase 2) ✅\n"
+        f"   13     |   Dom  |   17:00  | B · Fin (fase 3) ✅ automático\n"
+    )
+    embed.add_field(name="📅 Horario GT", value=gt_schedule, inline=False)
 
     today = datetime.now(timezone.utc).date()
     for key in ("bt", "gt"):
