@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Run tests
+        run: uv run pytest -v --tb=short
+
+  coauthorship:
+    name: Commit co-authorship
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate required Co-authored-by trailers
+        run: |
+          base="$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)"
+          echo "Validating co-authorship for commits ${base}..HEAD"
+
+          failed=0
+          # Skip merge commits: for pull_request events actions/checkout points
+          # HEAD at GitHub's preview merge commit, and merging main into a
+          # branch adds more of them; none are authored content.
+          while IFS= read -r commit; do
+            message="$(git log -1 --format=%B "${commit}")"
+            missing=""
+            grep -Eiq '^co-authored-by: .*FRANTIZEK@users\.noreply\.github\.com' <<<"${message}" || missing="FRANTIZEK"
+            grep -Eiq '^co-authored-by: .*JFRUVALC@users\.noreply\.github\.com' <<<"${message}" || missing="${missing:+${missing}, }JFRUVALC"
+            if [ -n "${missing}" ]; then
+              echo "::error title=Missing co-author::$(git log -1 --format='%h %s' "${commit}") is missing trailer(s): ${missing}"
+              failed=1
+            fi
+          done < <(git rev-list --no-merges "${base}..HEAD")
+
+          exit "${failed}"
