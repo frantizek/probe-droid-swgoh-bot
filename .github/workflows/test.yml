@@ -27,3 +27,32 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -v --tb=short
+
+  coauthorship:
+    name: Commit co-authorship
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate required Co-authored-by trailers
+        run: |
+          base="$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)"
+          echo "Validating co-authorship for commits ${base}..HEAD"
+
+          failed=0
+          while IFS= read -r commit; do
+            message="$(git log -1 --format=%B "${commit}")"
+            missing=""
+            grep -Eiq '^co-authored-by: .*frantizek@users\.noreply\.github\.com' <<<"${message}" || missing="frantizek"
+            grep -Eiq '^co-authored-by: .*jfruvalc@users\.noreply\.github\.com' <<<"${message}" || missing="${missing:+${missing}, }jfruvalc"
+            if [ -n "${missing}" ]; then
+              echo "::error title=Missing co-author::$(git log -1 --format='%h %s' "${commit}") is missing trailer(s): ${missing}"
+              failed=1
+            fi
+          done < <(git rev-list --no-merges "${base}..HEAD")
+
+          exit "${failed}"
