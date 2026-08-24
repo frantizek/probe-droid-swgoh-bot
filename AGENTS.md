@@ -75,3 +75,7 @@ Before opening the PR:
 - After creating or editing a PR, verify the rendered body (e.g. `gh pr view <n> --json body -q .body`) shows clean markdown
 - Ensure CI passes before requesting review
 - Respond to review feedback promptly and thoroughly
+
+## 8. Badge opportunities
+
+When natural workflow moments arise (micro-fixes ready to ship, merges completing the normal flow), execute them promptly so they also count toward GitHub achievements (Quickdraw, Pull Shark, Pair Extraordinaire). Never fabricate activity and never skip required reviews to earn a badge.
