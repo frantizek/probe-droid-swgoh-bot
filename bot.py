@@ -99,6 +99,21 @@ BATTLE_TYPES = {
 # auto-avanza sin necesidad de que un admin alimente fechas.
 CYCLE_LENGTH = 14
 
+# ─────────────────────────────────────────────
+# SLOTS GT: día de ciclo → hora UTC de publicación
+# ─────────────────────────────────────────────
+#GT-A: días 6-9, GT-B: días 10-13. Cada slot tiene una hora fija.
+GT_SLOT_TIMES = {
+    6: 19,   # Dom — GT-A Inscripción
+    7: 19,   # Lun — GT-A Defensa
+    8: 18,   # Mar — GT-A Ataque
+    9: 18,   # Mié — GT-A Fin
+    10: 18,  # Jue — GT-B Inscripción
+    11: 18,  # Vie — GT-B Defensa
+    12: 17,  # Sáb — GT-B Ataque
+    13: 17,  # Dom — GT-B Fin
+}
+
 CYCLE_DAY_EVENT = {
     0: ("bt", 1),
     1: ("bt", 2),
@@ -156,6 +171,10 @@ def init_db():
         "(id INTEGER PRIMARY KEY, auto_enabled INTEGER NOT NULL DEFAULT 0, anchor_date TEXT, updated_at TEXT)"
     )
     conn.execute("INSERT OR IGNORE INTO territorial_auto (id, auto_enabled) VALUES (1, 0)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS gt_posted "
+        "(cycle_day INTEGER, post_date TEXT, PRIMARY KEY (cycle_day, post_date))"
+    )
 
     # Migrar datos viejos de bt_config a event_dates si existen
     row = conn.execute("SELECT start_date FROM bt_config WHERE id = 1").fetchone()
@@ -276,6 +295,35 @@ def set_cycle_anchor(anchor: date) -> bool:
         return False
 
 
+def is_gt_posted(cycle_day: int, post_date: str) -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT 1 FROM gt_posted WHERE cycle_day = ? AND post_date = ?",
+            (cycle_day, post_date),
+        ).fetchone()
+        conn.close()
+        return row is not None
+    except Exception as e:
+        log.error("Error consultando gt_posted: %s", e)
+        return False
+
+
+def mark_gt_posted(cycle_day: int, post_date: str) -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "INSERT OR IGNORE INTO gt_posted (cycle_day, post_date) VALUES (?, ?)",
+            (cycle_day, post_date),
+        )
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        log.error("Error guardando gt_posted: %s", e)
+        return False
+
+
 # ─────────────────────────────────────────────
 # MONGODB
 # ─────────────────────────────────────────────
@@ -383,6 +431,37 @@ def get_cycle_phase(event_type: str) -> int | None:
     if entry is None or entry[0] != event_type:
         return None
     return entry[1]
+
+
+def gt_slot_matches(now_utc: datetime | None = None) -> bool:
+    """Verifica si el instante actual coincide con un slot GT programado.
+
+    Retorna True solo si:
+    1. El modo auto está activo
+    2. Hay un ancla de ciclo configurada
+    3. El día de ciclo actual tiene un slot GT definido
+    4. La hora UTC actual coincide con la hora del slot
+    5. El slot no fue ya publicado hoy (idempotencia)
+    """
+    if not get_auto_mode():
+        return False
+    anchor = get_cycle_anchor()
+    if anchor is None:
+        return False
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
+    if today < anchor:
+        return False
+    cycle_day = (today - anchor).days % CYCLE_LENGTH
+    expected_hour = GT_SLOT_TIMES.get(cycle_day)
+    if expected_hour is None:
+        return False
+    if now_utc.hour != expected_hour:
+        return False
+    if is_gt_posted(cycle_day, today.isoformat()):
+        return False
+    return True
 
 
 def _get_phase_manual(event_type: str) -> int | None:
@@ -544,9 +623,35 @@ async def daily_bt_order():
     await publish_order("bt")
 
 
-@tasks.loop(time=task_time(BATTLE_TYPES["gt"]["post_hour"], BATTLE_TYPES["gt"]["post_minute"]))
-async def daily_gt_order():
-    await publish_order("gt")
+@tasks.loop(minutes=5)
+async def gt_scheduler_loop():
+    """Verifica cada 5 minutos si hay un slot GT activo para publicar."""
+    if not gt_slot_matches():
+        return
+    anchor = get_cycle_anchor()
+    if anchor is None:
+        return
+    now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
+    cycle_day = (today - anchor).days % CYCLE_LENGTH
+    entry = CYCLE_DAY_EVENT.get(cycle_day)
+    if entry is None or entry[0] != "gt":
+        return
+    phase = entry[1]
+    cfg = BATTLE_TYPES["gt"]
+    order = get_template_order(cfg["templates"], phase)
+    if not order:
+        log.warning("No hay orden para GT fase %s (slot día %s)", phase, cycle_day)
+        return
+    channel = bot.get_channel(cfg["channel"])
+    if not channel:
+        log.warning("Canal GT no encontrado")
+        return
+    embed = build_order_embed("gt", phase, order)
+    await channel.send(embed=embed)
+    mark_gt_posted(cycle_day, today.isoformat())
+    log.info("GT fase %s publicada (slot día %s, %02d:%02d UTC)",
+             phase, cycle_day, now_utc.hour, now_utc.minute)
 
 
 @tasks.loop(minutes=CHECK_EVERY)
@@ -607,11 +712,11 @@ async def on_ready():
         scan_feeds.start()
     if not daily_bt_order.is_running():
         daily_bt_order.start()
-    if not daily_gt_order.is_running():
-        daily_gt_order.start()
+    if not gt_scheduler_loop.is_running():
+        gt_scheduler_loop.start()
     bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d} UTC"
-    gt_time = f"{BATTLE_TYPES['gt']['post_hour']:02d}:{BATTLE_TYPES['gt']['post_minute']:02d} UTC"
-    log.info("RSS scan: cada %s min | BT daily: %s | GT daily: %s", CHECK_EVERY, bt_time, gt_time)
+    log.info("RSS scan: cada %s min | BT daily: %s | GT scheduler: cada 5 min (slots variable)",
+             CHECK_EVERY, bt_time)
 
 
 # ─────────────────────────────────────────────
@@ -634,7 +739,7 @@ async def estado(ctx):
         value=(
             f"Modo automático: {'✅ Activado' if auto_mode else '⏸️ Detenido'}\n"
             f"Ancla del ciclo: `{anchor.isoformat() if anchor else 'no configurada'}`\n"
-            "Ciclo: BT 17:00 UTC · GT 18:00 UTC"
+            "Ciclo: BT 17:00 UTC · GT slots variables"
         ),
         inline=False,
     )
@@ -660,12 +765,36 @@ async def estado(ctx):
                     info += " | Finalizada"
             else:
                 info = "No configurada"
-        post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
+        if key == "gt":
+            post_time = "Slots variables (ver abajo)"
+        else:
+            post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
         embed.add_field(
             name=f"{cfg['name']} ({cfg['name_short']})",
-            value=f"Diario {post_time} en <#{cfg['channel']}>\n{info}",
+            value=f"Publicación: {post_time} en <#{cfg['channel']}>\n{info}",
             inline=False,
         )
+
+    gt_labels = {
+        6: "Dom — GT-A Inscripción",
+        7: "Lun — GT-A Defensa",
+        8: "Mar — GT-A Ataque",
+        9: "Mié — GT-A Fin",
+        10: "Jue — GT-B Inscripción",
+        11: "Vie — GT-B Defensa",
+        12: "Sáb — GT-B Ataque",
+        13: "Dom — GT-B Fin",
+    }
+    schedule_lines = []
+    for day in range(6, 14):
+        hour = GT_SLOT_TIMES[day]
+        label = gt_labels[day]
+        schedule_lines.append(f"`Día {day:2d}` {label} — {hour:02d}:00 UTC")
+    embed.add_field(
+        name="📅 Calendario GT (horarios por slot)",
+        value="\n".join(schedule_lines),
+        inline=False,
+    )
 
     await ctx.send(embed=embed)
 
@@ -889,13 +1018,16 @@ async def ayuda(ctx):
         cfg = BATTLE_TYPES[key]
         start_phase = cfg["phase_offset"]
         end_phase = cfg["max_phase"]
-        post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
-        cadence = ""
         if key == "gt":
+            post_time = "Slots variables"
             cadence = (
                 "Ciclo GT: 2 GT de 4 días por ciclo de 14 días "
                 "(signup, defensas, ataque, cierre)\n"
+                "Horarios: Dom/Lun 19:00 · Mar/Mié/Jue/Vie 18:00 · Sáb/Dom 17:00 UTC\n"
             )
+        else:
+            post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
+            cadence = ""
         embed.add_field(
             name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
             value=(

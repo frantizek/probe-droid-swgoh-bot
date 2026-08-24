@@ -10,8 +10,8 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
 - **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
-- **Órdenes GT**: Publicación automática diaria (18:00 UTC) de órdenes de Guerra Territorial desde MongoDB
-- **Avisos territoriales automáticos**: Modo auto (`!avisos_territoriales`) que calcula el ciclo oficial de 14 días (6 días BT + 4 días GT#1 + 4 días GT#2) sin alimentar fechas manuales
+- **Órdenes GT**: Publicación automática con slots horarios variables según el día del ciclo de 14 días
+- **Avisos territoriales automáticos**: Modo auto (`!avisos_territoriales`) que calcula el ciclo oficial de 14 días (6 días BT + 4 días GT#1 + 4 días GT#2) con horarios GT fijos por slot
 - **Comandos admin**: `!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
 
 ## Fuentes Monitorizadas
@@ -115,7 +115,18 @@ Los comandos admin (`!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!o
 
 ## Órdenes de Batalla Territorial (BT)
 
-El bot publica automáticamente las órdenes de BT a las **17:00 UTC** y las de GT a las **18:00 UTC** en sus respectivos canales configurados.
+El bot publica automáticamente las órdenes de BT a las **17:00 UTC**. Las de GT se publican en **slots horarios variables** según el día del ciclo:
+
+| Día ciclo | Hora UTC | Evento |
+|:---------:|:--------:|:------:|
+| 6 | 19:00 | GT-A Inscripción |
+| 7 | 19:00 | GT-A Defensa |
+| 8 | 18:00 | GT-A Ataque |
+| 9 | 18:00 | GT-A Fin |
+| 10 | 18:00 | GT-B Inscripción |
+| 11 | 18:00 | GT-B Defensa |
+| 12 | 17:00 | GT-B Ataque |
+| 13 | 17:00 | GT-B Fin |
 
 ### Flujo de publicación (modo manual)
 
@@ -151,30 +162,34 @@ La GT sigue el **ciclo oficial de 14 días** de EA junto con la BT: 6 días de B
 
 Con `!avisos_territoriales iniciar [YYYY-MM-DD]` el bot activa los avisos automáticos y calcula cada día la fase correspondiente con `(hoy - ancla) % 14`, sin que el admin tenga que alimentar fechas. El ancla se guarda en SQLite y el ciclo avanza solo cada 14 días.
 
-- Se usa la fecha indicada, la **fecha de BT guardada** o el **lunes más reciente** como ancla, siempre alineado al lunes (día de inicio de BT).
-- Se toma la BT **previa** como referencia, de modo que no quedan días sin publicación (ej.: con ancla lunes 03/08, el miércoles 12/08 es GT#1 cierre y el jueves 13/08 GT#2 signup).
-- `!avisos_territoriales detener` vuelve al modo manual. Mientras el modo auto esté activo, `!set_bt_date` y `!set_gt_date` se ignoran con un aviso.
+Cada slot GT tiene una **hora fija de publicación** según la tabla:
 
-### Fases del ciclo
-
-| Día | Semana | Evento | Fase | template_id |
-|:--:|:--:|:--:|:--:|-------------|
-| 0 | Lunes | BT | 1 | `ordenes_fase_1` |
-| 1 | Martes | BT | 2 | `ordenes_fase_2` |
-| 2 | Miércoles | BT | 3 | `ordenes_fase_3` |
-| 3 | Jueves | BT | 4 | `ordenes_fase_4` |
-| 4 | Viernes | BT | 5 | `ordenes_fase_5_mandalore` |
-| 5 | Sábado | BT | 6 | `ordenes_fase_6_mandalore` |
-| 6 | Domingo | GT#1 | 0 signup | `ordenes_gt_signup` |
-| 7 | Lunes | GT#1 | 1 defensas | `ordenes_gt_defensas` |
-| 8 | Martes | GT#1 | 2 ataque | `ordenes_gt_ataque` |
-| 9 | Miércoles | GT#1 | 3 cierre | `ordenes_gt_cierre` |
-| 10 | Jueves | GT#2 | 0 signup | `ordenes_gt_signup` |
-| 11 | Viernes | GT#2 | 1 defensas | `ordenes_gt_defensas` |
-| 12 | Sábado | GT#2 | 2 ataque | `ordenes_gt_ataque` |
-| 13 | Domingo | GT#2 | 3 cierre | `ordenes_gt_cierre` |
+| Día ciclo | Semana | Evento | Fase | Hora UTC | template_id |
+|:---------:|:------:|:------:|:----:|:--------:|-------------|
+| 0 | Lunes | BT | 1 | 17:00 | `ordenes_fase_1` |
+| 1 | Martes | BT | 2 | 17:00 | `ordenes_fase_2` |
+| 2 | Miércoles | BT | 3 | 17:00 | `ordenes_fase_3` |
+| 3 | Jueves | BT | 4 | 17:00 | `ordenes_fase_4` |
+| 4 | Viernes | BT | 5 | 17:00 | `ordenes_fase_5_mandalore` |
+| 5 | Sábado | BT | 6 | 17:00 | `ordenes_fase_6_mandalore` |
+| 6 | Domingo | GT-A | 0 signup | 19:00 | `ordenes_gt_signup` |
+| 7 | Lunes | GT-A | 1 defensas | 19:00 | `ordenes_gt_defensas` |
+| 8 | Martes | GT-A | 2 ataque | 18:00 | `ordenes_gt_ataque` |
+| 9 | Miércoles | GT-A | 3 cierre | 18:00 | `ordenes_gt_cierre` |
+| 10 | Jueves | GT-B | 0 signup | 18:00 | `ordenes_gt_signup` |
+| 11 | Viernes | GT-B | 1 defensas | 18:00 | `ordenes_gt_defensas` |
+| 12 | Sábado | GT-B | 2 ataque | 17:00 | `ordenes_gt_ataque` |
+| 13 | Domingo | GT-B | 3 cierre | 17:00 | `ordenes_gt_cierre` |
 
 > La fase 3 (cierre/review) **sí se publica**; el contenido depende del template en MongoDB.
+
+### Idempotencia
+
+El bot registra cada publicación GT en SQLite para evitar duplicados. Si el bot se reinicia el mismo día, no vuelve a publicar el mismo slot.
+
+### Gap B↔A
+
+No se envía ningún aviso GT entre el cierre de A (miércoles 18:00 UTC, día 9) y la inscripción de B (jueves 18:00 UTC, día 10).
 
 ### Modo manual (fallback)
 
