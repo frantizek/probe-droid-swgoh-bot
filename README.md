@@ -386,9 +386,20 @@ Las pruebas de base de datos usan archivos temporales y no afectan la base de da
 
 1. Documenta el issue en `.github/ISSUE_TEMPLATE/` o crea un archivo de especificación
 2. Crea una rama para tu feature (`git checkout -b feat/nombre-feature`)
-3. Commit tus cambios (`git commit -m "feat: descripción del cambio"`)
+3. Commit tus cambios incluyendo ambos trailers `Co-authored-by` (ver abajo)
 4. Push a la rama (`git push origin feat/nombre-feature`)
 5. Abre un Pull Request usando la plantilla
+
+### Co-autoría requerida
+
+Todo commit debe incluir a ambos mantenedores como co-autores via trailers `Co-authored-by:`. CI valida cada commit en un PR y falla si falta un trailer. GitHub propaga estos trailers en commits de squash, manteniendo la atribución correcta en `main`.
+
+Ejemplo:
+```bash
+git commit -m "feat(#N): descripción del cambio" \
+  -m "Co-authored-by: frantizek <32653773+frantizek@users.noreply.github.com>" \
+  -m "Co-authored-by: jfruvalc <93352341+jfruvalc@users.noreply.github.com>"
+```
 
 ## Licencia
 

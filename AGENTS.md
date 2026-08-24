@@ -8,7 +8,7 @@ You are a senior software engineer. Follow the workflow below precisely for ever
 - Install: `uv sync --extra dev` (deps + dev extras: pytest, pytest-asyncio, pytest-mock).
 - Tests: `uv run pytest -v --tb=short`
 - Linters/formatters: none configured (`pyproject.toml` defines no ruff/mypy/black config).
-- CI: `.github/workflows/test.yml` runs `uv sync --extra dev` + `uv run pytest -v --tb=short` on Python 3.12 and 3.13.
+- CI: `.github/workflows/test.yml` runs `uv sync --extra dev` + `uv run pytest -v --tb=short` on Python 3.12 and 3.13, plus a `coauthorship` job that validates every commit carries both maintainer `Co-authored-by` trailers.
 - Runtime needs a `.env` file (gitignored; see `.env.example`) and a MongoDB instance.
 - Default branch / development line: `main`. Feature branches use `feat/...`, fixes use `fix/...`.
 
@@ -60,6 +60,12 @@ Before opening the PR:
 ## 7. Commit and pull request
 
 - Use conventional, descriptive commit messages (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `test:`)
+- **Every commit MUST include both maintainer `Co-authored-by` trailers.** CI validates each commit in a PR and fails if a trailer is missing. Example:
+  ```
+  git commit -m "feat(#21): enforce co-authorship" \
+    -m "Co-authored-by: frantizek <32653773+frantizek@users.noreply.github.com>" \
+    -m "Co-authored-by: jfruvalc <93352341+jfruvalc@users.noreply.github.com>"
+  ```
 - Push the branch and open a pull request that includes:
   - A link to the issue or task
   - A clear explanation of the approach and any tradeoffs made

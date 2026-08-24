@@ -18,3 +18,6 @@
 - [ ] No requiere cambios de documentación
 
 ## Notas adicionales
+
+## Coautoría / Co-authorship
+- [ ] Todos los commits incluyen los trailers `Co-authored-by` de frantizek y jfruvalc
