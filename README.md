@@ -9,9 +9,10 @@ Bot de Discord que monitoriza fuentes RSS para detectar automáticamente código
 - **Anti-spam**: Elimina preguntas, ally codes y contenido no relacionado
 - **Embeds automáticos**: Notificaciones ricas en formato Discord
 - **Persistencia**: Base de datos SQLite para evitar duplicados
-- **Órdenes BT**: Publicación automática diaria (17:00 UTC) de órdenes de Batalla Territorial desde MongoDB
-- **Órdenes GT**: Publicación automática con slots horarios variables según el día del ciclo de 14 días
+- **Órdenes BT**: Publicación automática diaria (19:00 hora de España) de órdenes de Batalla Territorial desde MongoDB
+- **Órdenes GT**: Publicación automática con slots horarios variables según el día del ciclo de 14 días, siempre en hora de España
 - **Avisos territoriales automáticos**: Modo auto (`!avisos_territoriales`) que calcula el ciclo oficial de 14 días (6 días BT + 4 días GT#1 + 4 días GT#2) con horarios GT fijos por slot
+- **Horario de España**: Todos los horarios se anclan a `Europe/Madrid`; el cambio de hora (CET/CEST) se aplica automáticamente
 - **Comandos admin**: `!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!orden_bt` y `!orden_gt` para gestión de BT y GT
 
 ## Fuentes Monitorizadas
@@ -115,10 +116,10 @@ Los comandos admin (`!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!o
 
 ## Órdenes de Batalla Territorial (BT)
 
-El bot publica automáticamente las órdenes de BT a las **17:00 UTC**. Las de GT se publican en **slots horarios variables** según el día del ciclo:
+El bot publica automáticamente las órdenes de BT a las **19:00 hora de España** (`Europe/Madrid`). Las de GT se publican en **slots horarios variables** según el día del ciclo, también en hora de España:
 
-| Día ciclo | Hora UTC | Evento |
-|:---------:|:--------:|:------:|
+| Día ciclo | Hora España | Evento |
+|:---------:|:-----------:|:------:|
 | 6 | 19:00 | GT-A Inscripción |
 | 7 | 19:00 | GT-A Defensa |
 | 8 | 18:00 | GT-A Ataque |
@@ -127,6 +128,8 @@ El bot publica automáticamente las órdenes de BT a las **17:00 UTC**. Las de G
 | 11 | 18:00 | GT-B Defensa |
 | 12 | 17:00 | GT-B Ataque |
 | 13 | 17:00 | GT-B Fin |
+
+> El bot convierte cada hora de España al instante UTC correspondiente en la fecha de publicación, por lo que la hora local se mantiene estable todo el año. Ver [Zona horaria y cambio de hora](#zona-horaria-y-cambio-de-hora).
 
 ### Flujo de publicación (modo manual)
 
@@ -164,14 +167,14 @@ Con `!avisos_territoriales iniciar [YYYY-MM-DD]` el bot activa los avisos autom�
 
 Cada slot GT tiene una **hora fija de publicación** según la tabla:
 
-| Día ciclo | Semana | Evento | Fase | Hora UTC | template_id |
-|:---------:|:------:|:------:|:----:|:--------:|-------------|
-| 0 | Lunes | BT | 1 | 17:00 | `ordenes_fase_1` |
-| 1 | Martes | BT | 2 | 17:00 | `ordenes_fase_2` |
-| 2 | Miércoles | BT | 3 | 17:00 | `ordenes_fase_3` |
-| 3 | Jueves | BT | 4 | 17:00 | `ordenes_fase_4` |
-| 4 | Viernes | BT | 5 | 17:00 | `ordenes_fase_5_mandalore` |
-| 5 | Sábado | BT | 6 | 17:00 | `ordenes_fase_6_mandalore` |
+| Día ciclo | Semana | Evento | Fase | Hora España | template_id |
+|:---------:|:------:|:------:|:----:|:-----------:|-------------|
+| 0 | Lunes | BT | 1 | 19:00 | `ordenes_fase_1` |
+| 1 | Martes | BT | 2 | 19:00 | `ordenes_fase_2` |
+| 2 | Miércoles | BT | 3 | 19:00 | `ordenes_fase_3` |
+| 3 | Jueves | BT | 4 | 19:00 | `ordenes_fase_4` |
+| 4 | Viernes | BT | 5 | 19:00 | `ordenes_fase_5_mandalore` |
+| 5 | Sábado | BT | 6 | 19:00 | `ordenes_fase_6_mandalore` |
 | 6 | Domingo | GT-A | 0 signup | 19:00 | `ordenes_gt_signup` |
 | 7 | Lunes | GT-A | 1 defensas | 19:00 | `ordenes_gt_defensas` |
 | 8 | Martes | GT-A | 2 ataque | 18:00 | `ordenes_gt_ataque` |
@@ -189,7 +192,7 @@ El bot registra cada publicación GT en SQLite para evitar duplicados. Si el bot
 
 ### Gap B↔A
 
-No se envía ningún aviso GT entre el cierre de A (miércoles 18:00 UTC, día 9) y la inscripción de B (jueves 18:00 UTC, día 10).
+No se envía ningún aviso GT entre el cierre de A (miércoles 18:00 hora de España, día 9) y la inscripción de B (jueves 18:00 hora de España, día 10).
 
 ### Modo manual (fallback)
 
@@ -201,7 +204,33 @@ Con el modo auto detenido, `!set_gt_date YYYY-MM-DD` fija la fecha de inicio y l
 
 Dentro de la ventana las fases siguen el día de la semana: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado) y cierre (miércoles/domingo).
 
-> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza cada día a las **18:00 UTC**.
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza en cada slot a su **hora fija en hora de España** (19:00 / 18:00 / 17:00 según el día del ciclo).
+
+## Zona horaria y cambio de hora
+
+Todos los horarios de publicación (BT y GT) están anclados a **`Europe/Madrid`** (hora de España). El bot guarda horas locales y, para cada fecha concreta, calcula el instante UTC equivalente mediante `zoneinfo`, de modo que el cambio de hora se aplica solo dos veces al año:
+
+| Época | Zona | BT | GT-A (signup/defensas) | GT-A (ataque/cierre) | GT-B (signup/defensas) | GT-B (ataque/cierre) |
+|-------|------|:--:|:----------------------:|:--------------------:|:----------------------:|:--------------------:|
+| Invierno (CET, UTC+1) | `Europe/Madrid` | 19:00 (18:00 UTC) | 19:00 (18:00 UTC) | 18:00 (17:00 UTC) | 18:00 (17:00 UTC) | 17:00 (16:00 UTC) |
+| Verano (CEST, UTC+2) | `Europe/Madrid` | 19:00 (17:00 UTC) | 19:00 (17:00 UTC) | 18:00 (16:00 UTC) | 18:00 (16:00 UTC) | 17:00 (15:00 UTC) |
+
+La hora local en España es siempre la misma; lo que cambia es el instante UTC. Esto mantiene el aviso a la misma hora del día para los miembros del gremio todo el año.
+
+> **Tradeoff aceptado:** solo una zona puede quedar constante. El gremio se rige por España, así que los miembros en zonas sin cambio de hora (por ejemplo México, UTC-6 fijo desde 2022) verán oscilar ±1 h al año la hora local de entrega. Es el precio de mantener estable la referencia del gremio.
+
+### Semanas con desfase entre EE. UU. y la UE
+
+El juego sigue anclado a las **10:00 AM hora del Pacífico**. Los cambios de hora de EE. UU. y de la UE no ocurren el mismo día, así que durante unas semanas al año el desfase entre ambos es de 1 h:
+
+- **~8–29 de marzo** y **~25 de octubre – 1 de noviembre** (fechas de 2026): la fase real del juego cae 1 h antes en España.
+- En esas semanas el bot **mantiene su hora de España**, por lo que puede publicar justo al inicio de la fase en lugar de 1 h antes. Es un efecto conocido y aceptado de anclar la publicación a España; se resuelve solo cuando ambos países igualan el horario.
+
+### Nota operativa sobre los logs
+
+Los logs del sistema suelen estar en **UTC**. Un aviso de las 19:00 hora de España aparecerá en los logs a las **18:00 UTC en invierno** (CET, UTC+1) y a las **17:00 UTC en verano** (CEST, UTC+2). Lo mismo aplica a los slots GT de 18:00 y 17:00. La hora local de publicación no cambia; solo cambia su representación UTC.
+
+> `zoneinfo` necesita la base de datos IANA. En Linux suele venir con el sistema; en Windows se instala con la dependencia `tzdata` incluida en `pyproject.toml`.
 
 ## Despliegue en Oracle Cloud (Free Tier)
 
@@ -326,7 +355,7 @@ sudo journalctl -u probe-droid --since "5 min ago"
 
 - `Shard ID None has connected to Gateway`
 - `[INFO] Sonda v5 activa como probe-droid-swgoh-bot#2600`
-- `[INFO] RSS scan: cada 15 min | BT daily: 17:00 UTC | GT daily: 18:00 UTC`
+- `[INFO] RSS scan: cada 15 min | BT daily: 19:00 hora de España | GT scheduler: cada 5 min (slots variable)`
 
 **Mensajes normales que NO son errores:**
 
