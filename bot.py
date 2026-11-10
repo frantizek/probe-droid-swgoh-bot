@@ -13,6 +13,7 @@ import logging
 import sqlite3
 import os
 from datetime import datetime, timezone, date, timedelta, time
+from zoneinfo import ZoneInfo
 from discord.ext import tasks, commands
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
@@ -28,7 +29,10 @@ CODE_ALERTS_CHANNEL_ID = int(os.getenv("CODE_ALERTS_CHANNEL_ID", str(GENERAL_CHA
 BT_GUILD_ORDERS_CHANNEL_ID = int(os.getenv("BT_GUILD_ORDERS_CHANNEL_ID", str(GENERAL_CHANNEL_ID)))
 GT_GUILD_ORDERS_CHANNEL_ID = int(os.getenv("GT_GUILD_ORDERS_CHANNEL_ID", str(GENERAL_CHANNEL_ID)))
 CHECK_EVERY = 15
-POST_TIMEZONE = "UTC"
+
+# Zona horaria del gremio. Todos los avisos BT/GT se programan en hora de
+# España; APScheduler/discord.py aplican las reglas CET/CEST automáticamente.
+GUILD_TZ = ZoneInfo("Europe/Madrid")
 
 # IDs de usuarios autorizados a usar comandos admin via DM (separados por coma)
 _ADMIN_USER_IDS_ENV = os.getenv("ADMIN_USER_IDS", "")
@@ -56,7 +60,7 @@ BATTLE_TYPES = {
         },
         "phase_offset": 1,
         "max_phase": 6,
-        "post_hour": 17,
+        "post_hour": 19,  # hora de España
         "post_minute": 0,
     },
     "gt": {
@@ -100,9 +104,10 @@ BATTLE_TYPES = {
 CYCLE_LENGTH = 14
 
 # ─────────────────────────────────────────────
-# SLOTS GT: día de ciclo → hora UTC de publicación
+# SLOTS GT: día de ciclo → hora de publicación (Europe/Madrid)
 # ─────────────────────────────────────────────
-#GT-A: días 6-9, GT-B: días 10-13. Cada slot tiene una hora fija.
+# GT-A: días 6-9, GT-B: días 10-13. Cada slot tiene una hora fija en hora de
+# España; el bot la convierte al instante UTC correcto según CET/CEST.
 GT_SLOT_TIMES = {
     6: 19,   # Dom — GT-A Inscripción
     7: 19,   # Lun — GT-A Defensa
@@ -412,11 +417,17 @@ def resolve_cycle_anchor(fecha: str | None) -> tuple[date | None, bool]:
             try:
                 candidate = date.fromisoformat(bt_start)
             except ValueError:
-                candidate = datetime.now(timezone.utc).date()
+                candidate = datetime.now(GUILD_TZ).date()
         else:
-            candidate = datetime.now(timezone.utc).date()
+            candidate = datetime.now(GUILD_TZ).date()
     aligned = candidate - timedelta(days=candidate.weekday())
     return aligned, aligned != candidate
+
+
+def local_slot_to_utc(day: date, hour: int, minute: int = 0) -> datetime:
+    """Convierte una hora local de España al instante UTC equivalente."""
+    local = datetime.combine(day, time(hour, minute), tzinfo=GUILD_TZ)
+    return local.astimezone(timezone.utc)
 
 
 def get_cycle_phase(event_type: str) -> int | None:
@@ -424,7 +435,7 @@ def get_cycle_phase(event_type: str) -> int | None:
     anchor = get_cycle_anchor()
     if anchor is None:
         return None
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(GUILD_TZ).date()
     if today < anchor:
         return None
     entry = CYCLE_DAY_EVENT.get((today - anchor).days % CYCLE_LENGTH)
@@ -439,8 +450,8 @@ def gt_slot_matches(now_utc: datetime | None = None) -> bool:
     Retorna True solo si:
     1. El modo auto está activo
     2. Hay un ancla de ciclo configurada
-    3. El día de ciclo actual tiene un slot GT definido
-    4. La hora UTC actual coincide con la hora del slot
+    3. El día de ciclo actual (hora de España) tiene un slot GT definido
+    4. El instante actual cae en la hora local de España del slot
     5. El slot no fue ya publicado hoy (idempotencia)
     """
     if not get_auto_mode():
@@ -450,14 +461,17 @@ def gt_slot_matches(now_utc: datetime | None = None) -> bool:
         return False
     if now_utc is None:
         now_utc = datetime.now(timezone.utc)
-    today = now_utc.date()
+    elif now_utc.tzinfo is None:
+        now_utc = now_utc.replace(tzinfo=timezone.utc)
+    today = now_utc.astimezone(GUILD_TZ).date()
     if today < anchor:
         return False
     cycle_day = (today - anchor).days % CYCLE_LENGTH
     expected_hour = GT_SLOT_TIMES.get(cycle_day)
     if expected_hour is None:
         return False
-    if now_utc.hour != expected_hour:
+    expected_utc = local_slot_to_utc(today, expected_hour)
+    if not (expected_utc <= now_utc < expected_utc + timedelta(hours=1)):
         return False
     if is_gt_posted(cycle_day, today.isoformat()):
         return False
@@ -473,7 +487,7 @@ def _get_phase_manual(event_type: str) -> int | None:
         return None
     try:
         start = date.fromisoformat(start_str)
-        today = datetime.now(timezone.utc).date()
+        today = datetime.now(GUILD_TZ).date()
         if today < start:
             return None
         weekday_phase = cfg.get("weekday_phase")
@@ -499,7 +513,7 @@ def get_phase(event_type: str) -> int | None:
 
 def get_order_date(event_type: str, start: date, phase: int) -> date:
     if get_auto_mode() or BATTLE_TYPES[event_type].get("weekday_phase") is not None:
-        return datetime.now(timezone.utc).date()
+        return datetime.now(GUILD_TZ).date()
     return start + timedelta(days=phase - BATTLE_TYPES[event_type]["phase_offset"])
 
 
@@ -615,7 +629,7 @@ async def publish_order(event_type: str):
 # TAREAS PROGRAMADAS
 # ─────────────────────────────────────────────
 def task_time(hour: int, minute: int) -> time:
-    return time(hour, minute)
+    return time(hour, minute, tzinfo=GUILD_TZ)
 
 
 @tasks.loop(time=task_time(BATTLE_TYPES["bt"]["post_hour"], BATTLE_TYPES["bt"]["post_minute"]))
@@ -626,13 +640,13 @@ async def daily_bt_order():
 @tasks.loop(minutes=5)
 async def gt_scheduler_loop():
     """Verifica cada 5 minutos si hay un slot GT activo para publicar."""
-    if not gt_slot_matches():
+    now_local = datetime.now(GUILD_TZ)
+    if not gt_slot_matches(now_local.astimezone(timezone.utc)):
         return
     anchor = get_cycle_anchor()
     if anchor is None:
         return
-    now_utc = datetime.now(timezone.utc)
-    today = now_utc.date()
+    today = now_local.date()
     cycle_day = (today - anchor).days % CYCLE_LENGTH
     entry = CYCLE_DAY_EVENT.get(cycle_day)
     if entry is None or entry[0] != "gt":
@@ -650,8 +664,8 @@ async def gt_scheduler_loop():
     embed = build_order_embed("gt", phase, order)
     await channel.send(embed=embed)
     mark_gt_posted(cycle_day, today.isoformat())
-    log.info("GT fase %s publicada (slot día %s, %02d:%02d UTC)",
-             phase, cycle_day, now_utc.hour, now_utc.minute)
+    log.info("GT fase %s publicada (slot día %s, %02d:%02d hora de España)",
+             phase, cycle_day, now_local.hour, now_local.minute)
 
 
 @tasks.loop(minutes=CHECK_EVERY)
@@ -714,7 +728,7 @@ async def on_ready():
         daily_bt_order.start()
     if not gt_scheduler_loop.is_running():
         gt_scheduler_loop.start()
-    bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d} UTC"
+    bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d} hora de España"
     log.info("RSS scan: cada %s min | BT daily: %s | GT scheduler: cada 5 min (slots variable)",
              CHECK_EVERY, bt_time)
 
@@ -739,7 +753,7 @@ async def estado(ctx):
         value=(
             f"Modo automático: {'✅ Activado' if auto_mode else '⏸️ Detenido'}\n"
             f"Ancla del ciclo: `{anchor.isoformat() if anchor else 'no configurada'}`\n"
-            "Ciclo: BT 17:00 UTC · GT slots variables"
+            "Ciclo: BT 19:00 hora de España · GT slots variables"
         ),
         inline=False,
     )
@@ -768,7 +782,7 @@ async def estado(ctx):
         if key == "gt":
             post_time = "Slots variables (ver abajo)"
         else:
-            post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
+            post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} hora de España"
         embed.add_field(
             name=f"{cfg['name']} ({cfg['name_short']})",
             value=f"Publicación: {post_time} en <#{cfg['channel']}>\n{info}",
@@ -789,7 +803,9 @@ async def estado(ctx):
     for day in range(6, 14):
         hour = GT_SLOT_TIMES[day]
         label = gt_labels[day]
-        schedule_lines.append(f"`Día {day:2d}` {label} — {hour:02d}:00 UTC")
+        schedule_lines.append(f"`Día {day:2d}` {label} — {hour:02d}:00 hora de España")
+    schedule_lines.append("")
+    schedule_lines.append("Horas de España (Europe/Madrid); el bot las convierte a UTC automáticamente.")
     embed.add_field(
         name="📅 Calendario GT (horarios por slot)",
         value="\n".join(schedule_lines),
@@ -964,7 +980,7 @@ async def _avisos_cmd(ctx, accion: str | None, fecha: str | None):
             await ctx.send(
                 f"✅ Avisos territoriales automáticos **activados**.\n"
                 f"Ancla del ciclo: `{anchor.isoformat()}`\n"
-                "BT se publica a las 17:00 UTC · GT a las 18:00 UTC."
+                "BT se publica a las 19:00 hora de España · GT según slots (19:00/18:00/17:00)."
             )
             log.info("Modo auto territorial activado con ancla %s por admin %s", anchor, ctx.author.id)
         else:
@@ -1023,10 +1039,10 @@ async def ayuda(ctx):
             cadence = (
                 "Ciclo GT: 2 GT de 4 días por ciclo de 14 días "
                 "(signup, defensas, ataque, cierre)\n"
-                "Horarios: Dom/Lun 19:00 · Mar/Mié/Jue/Vie 18:00 · Sáb/Dom 17:00 UTC\n"
+                "Horarios: Dom/Lun 19:00 · Mar/Mié/Jue/Vie 18:00 · Sáb/Dom 17:00 hora de España\n"
             )
         else:
-            post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} UTC"
+            post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} hora de España"
             cadence = ""
         embed.add_field(
             name=f"⚔️ {cfg['name']} ({cfg['name_short']})",
