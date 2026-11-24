@@ -355,7 +355,7 @@ sudo journalctl -u probe-droid --since "5 min ago"
 
 - `Shard ID None has connected to Gateway`
 - `[INFO] Sonda v5 activa como probe-droid-swgoh-bot#2600`
-- `[INFO] RSS scan: cada 15 min | BT daily: 19:00 hora de España | GT scheduler: cada 5 min (slots variable)`
+- `[INFO] 📅 Scheduler configurado (hora España): recordatorio BT 19:00, GT auto 17/18/19 según fase, GT manual 18:00`
 
 **Mensajes normales que NO son errores:**
 
