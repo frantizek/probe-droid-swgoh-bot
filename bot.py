@@ -715,6 +715,19 @@ async def scan_feeds():
             log.error("Error: %s", e)
 
 
+def scheduler_log_line() -> str:
+    """Devuelve la línea de arranque con los horarios en hora de España."""
+    bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d}"
+    gt_hours = "/".join(str(hour) for hour in sorted(set(GT_SLOT_TIMES.values())))
+    gt_manual = f"{BATTLE_TYPES['gt']['post_hour']:02d}:{BATTLE_TYPES['gt']['post_minute']:02d}"
+    return (
+        "📅 Scheduler configurado (hora España): "
+        f"recordatorio BT {bt_time}, "
+        f"GT auto {gt_hours} según fase, "
+        f"GT manual {gt_manual}"
+    )
+
+
 # ─────────────────────────────────────────────
 # EVENTO: ON_READY
 # ─────────────────────────────────────────────
@@ -728,9 +741,7 @@ async def on_ready():
         daily_bt_order.start()
     if not gt_scheduler_loop.is_running():
         gt_scheduler_loop.start()
-    bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d} hora de España"
-    log.info("RSS scan: cada %s min | BT daily: %s | GT scheduler: cada 5 min (slots variable)",
-             CHECK_EVERY, bt_time)
+    log.info(scheduler_log_line())
 
 
 # ─────────────────────────────────────────────
