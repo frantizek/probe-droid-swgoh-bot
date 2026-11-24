@@ -75,7 +75,7 @@ BATTLE_TYPES = {
         },
         "phase_offset": 0,
         "max_phase": 3,
-        "post_hour": 18,
+        "post_hour": 20,  # hora de España (base del modo manual)
         "post_minute": 0,
         # Modo manual (modo auto detenido): ciclo anclado a la fecha de inicio
         # con ventana según el día de la semana de esa fecha. weekday() -> fase.
@@ -107,17 +107,34 @@ CYCLE_LENGTH = 14
 # SLOTS GT: día de ciclo → hora de publicación (Europe/Madrid)
 # ─────────────────────────────────────────────
 # GT-A: días 6-9, GT-B: días 10-13. Cada slot tiene una hora fija en hora de
-# España; el bot la convierte al instante UTC correcto según CET/CEST.
+# España; el bot la convierte al instante UTC correcto según CET/CEST. La
+# estructura escalonada se conserva, con +2 h respecto al calendario anterior.
 GT_SLOT_TIMES = {
-    6: 19,   # Dom — GT-A Inscripción
-    7: 19,   # Lun — GT-A Defensa
-    8: 18,   # Mar — GT-A Ataque
-    9: 18,   # Mié — GT-A Fin
-    10: 18,  # Jue — GT-B Inscripción
-    11: 18,  # Vie — GT-B Defensa
-    12: 17,  # Sáb — GT-B Ataque
-    13: 17,  # Dom — GT-B Fin
+    6: 21,   # Dom — GT-A Inscripción
+    7: 21,   # Lun — GT-A Defensa
+    8: 20,   # Mar — GT-A Ataque
+    9: 20,   # Mié — GT-A Fin
+    10: 20,  # Jue — GT-B Inscripción
+    11: 20,  # Vie — GT-B Defensa
+    12: 19,  # Sáb — GT-B Ataque
+    13: 19,  # Dom — GT-B Fin
 }
+
+GT_SLOT_LABELS = {
+    6: "Dom — GT-A Inscripción",
+    7: "Lun — GT-A Defensa",
+    8: "Mar — GT-A Ataque",
+    9: "Mié — GT-A Fin",
+    10: "Jue — GT-B Inscripción",
+    11: "Vie — GT-B Defensa",
+    12: "Sáb — GT-B Ataque",
+    13: "Dom — GT-B Fin",
+}
+
+
+def gt_slot_hours() -> tuple[int, ...]:
+    """Horas únicas de los slots GT, ordenadas de menor a mayor."""
+    return tuple(sorted(set(GT_SLOT_TIMES.values())))
 
 CYCLE_DAY_EVENT = {
     0: ("bt", 1),
@@ -664,8 +681,8 @@ async def gt_scheduler_loop():
     embed = build_order_embed("gt", phase, order)
     await channel.send(embed=embed)
     mark_gt_posted(cycle_day, today.isoformat())
-    log.info("GT fase %s publicada (slot día %s, %02d:%02d hora de España)",
-             phase, cycle_day, now_local.hour, now_local.minute)
+    log.info("GT slots %02d:00 España (%s) — fase %s publicada (día %s)",
+             now_local.hour, GT_SLOT_LABELS.get(cycle_day, f"día {cycle_day}"), phase, cycle_day)
 
 
 @tasks.loop(minutes=CHECK_EVERY)
@@ -718,7 +735,7 @@ async def scan_feeds():
 def scheduler_log_line() -> str:
     """Devuelve la línea de arranque con los horarios en hora de España."""
     bt_time = f"{BATTLE_TYPES['bt']['post_hour']:02d}:{BATTLE_TYPES['bt']['post_minute']:02d}"
-    gt_hours = "/".join(str(hour) for hour in sorted(set(GT_SLOT_TIMES.values())))
+    gt_hours = "/".join(str(hour) for hour in gt_slot_hours())
     gt_manual = f"{BATTLE_TYPES['gt']['post_hour']:02d}:{BATTLE_TYPES['gt']['post_minute']:02d}"
     return (
         "📅 Scheduler configurado (hora España): "
@@ -764,7 +781,8 @@ async def estado(ctx):
         value=(
             f"Modo automático: {'✅ Activado' if auto_mode else '⏸️ Detenido'}\n"
             f"Ancla del ciclo: `{anchor.isoformat() if anchor else 'no configurada'}`\n"
-            "Ciclo: BT 19:00 hora de España · GT slots variables"
+            f"Ciclo: BT {BATTLE_TYPES['bt']['post_hour']:02d}:00 hora de España · "
+            f"GT slots {'/'.join(str(hour) for hour in gt_slot_hours())} según fase"
         ),
         inline=False,
     )
@@ -791,7 +809,7 @@ async def estado(ctx):
             else:
                 info = "No configurada"
         if key == "gt":
-            post_time = "Slots variables (ver abajo)"
+            post_time = f"{cfg['post_hour']:02d}:00 hora de España (base; ver slots)"
         else:
             post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} hora de España"
         embed.add_field(
@@ -800,20 +818,10 @@ async def estado(ctx):
             inline=False,
         )
 
-    gt_labels = {
-        6: "Dom — GT-A Inscripción",
-        7: "Lun — GT-A Defensa",
-        8: "Mar — GT-A Ataque",
-        9: "Mié — GT-A Fin",
-        10: "Jue — GT-B Inscripción",
-        11: "Vie — GT-B Defensa",
-        12: "Sáb — GT-B Ataque",
-        13: "Dom — GT-B Fin",
-    }
     schedule_lines = []
     for day in range(6, 14):
         hour = GT_SLOT_TIMES[day]
-        label = gt_labels[day]
+        label = GT_SLOT_LABELS[day]
         schedule_lines.append(f"`Día {day:2d}` {label} — {hour:02d}:00 hora de España")
     schedule_lines.append("")
     schedule_lines.append("Horas de España (Europe/Madrid); el bot las convierte a UTC automáticamente.")
@@ -991,7 +999,9 @@ async def _avisos_cmd(ctx, accion: str | None, fecha: str | None):
             await ctx.send(
                 f"✅ Avisos territoriales automáticos **activados**.\n"
                 f"Ancla del ciclo: `{anchor.isoformat()}`\n"
-                "BT se publica a las 19:00 hora de España · GT según slots (19:00/18:00/17:00)."
+                f"BT se publica a las {BATTLE_TYPES['bt']['post_hour']:02d}:00 hora de España · "
+                f"GT según slots ({'/'.join(f'{hour:02d}:00' for hour in gt_slot_hours())}), "
+                f"base manual {BATTLE_TYPES['gt']['post_hour']:02d}:00 hora de España."
             )
             log.info("Modo auto territorial activado con ancla %s por admin %s", anchor, ctx.author.id)
         else:
@@ -1046,11 +1056,16 @@ async def ayuda(ctx):
         start_phase = cfg["phase_offset"]
         end_phase = cfg["max_phase"]
         if key == "gt":
-            post_time = "Slots variables"
+            post_time = (
+                f"{cfg['post_hour']:02d}:00 hora de España "
+                f"(base; slots {'/'.join(f'{hour:02d}:00' for hour in gt_slot_hours())})"
+            )
             cadence = (
                 "Ciclo GT: 2 GT de 4 días por ciclo de 14 días "
                 "(signup, defensas, ataque, cierre)\n"
-                "Horarios: Dom/Lun 19:00 · Mar/Mié/Jue/Vie 18:00 · Sáb/Dom 17:00 hora de España\n"
+                f"Horarios: Dom/Lun {GT_SLOT_TIMES[6]:02d}:00 · "
+                f"Mar/Mié/Jue/Vie {GT_SLOT_TIMES[8]:02d}:00 · "
+                f"Sáb/Dom {GT_SLOT_TIMES[12]:02d}:00 hora de España\n"
             )
         else:
             post_time = f"{cfg['post_hour']:02d}:{cfg['post_minute']:02d} hora de España"
