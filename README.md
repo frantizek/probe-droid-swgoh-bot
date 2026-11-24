@@ -116,18 +116,18 @@ Los comandos admin (`!avisos_territoriales`, `!set_bt_date`, `!set_gt_date`, `!o
 
 ## Órdenes de Batalla Territorial (BT)
 
-El bot publica automáticamente las órdenes de BT a las **19:00 hora de España** (`Europe/Madrid`). Las de GT se publican en **slots horarios variables** según el día del ciclo, también en hora de España:
+El bot publica automáticamente las órdenes de BT a las **19:00 hora de España** (`Europe/Madrid`). Las de GT se publican en **slots horarios variables** según el día del ciclo, también en hora de España (19:00 / 20:00 / 21:00):
 
 | Día ciclo | Hora España | Evento |
 |:---------:|:-----------:|:------:|
-| 6 | 19:00 | GT-A Inscripción |
-| 7 | 19:00 | GT-A Defensa |
-| 8 | 18:00 | GT-A Ataque |
-| 9 | 18:00 | GT-A Fin |
-| 10 | 18:00 | GT-B Inscripción |
-| 11 | 18:00 | GT-B Defensa |
-| 12 | 17:00 | GT-B Ataque |
-| 13 | 17:00 | GT-B Fin |
+| 6 | 21:00 | GT-A Inscripción |
+| 7 | 21:00 | GT-A Defensa |
+| 8 | 20:00 | GT-A Ataque |
+| 9 | 20:00 | GT-A Fin |
+| 10 | 20:00 | GT-B Inscripción |
+| 11 | 20:00 | GT-B Defensa |
+| 12 | 19:00 | GT-B Ataque |
+| 13 | 19:00 | GT-B Fin |
 
 > El bot convierte cada hora de España al instante UTC correspondiente en la fecha de publicación, por lo que la hora local se mantiene estable todo el año. Ver [Zona horaria y cambio de hora](#zona-horaria-y-cambio-de-hora).
 
@@ -175,14 +175,14 @@ Cada slot GT tiene una **hora fija de publicación** según la tabla:
 | 3 | Jueves | BT | 4 | 19:00 | `ordenes_fase_4` |
 | 4 | Viernes | BT | 5 | 19:00 | `ordenes_fase_5_mandalore` |
 | 5 | Sábado | BT | 6 | 19:00 | `ordenes_fase_6_mandalore` |
-| 6 | Domingo | GT-A | 0 signup | 19:00 | `ordenes_gt_signup` |
-| 7 | Lunes | GT-A | 1 defensas | 19:00 | `ordenes_gt_defensas` |
-| 8 | Martes | GT-A | 2 ataque | 18:00 | `ordenes_gt_ataque` |
-| 9 | Miércoles | GT-A | 3 cierre | 18:00 | `ordenes_gt_cierre` |
-| 10 | Jueves | GT-B | 0 signup | 18:00 | `ordenes_gt_signup` |
-| 11 | Viernes | GT-B | 1 defensas | 18:00 | `ordenes_gt_defensas` |
-| 12 | Sábado | GT-B | 2 ataque | 17:00 | `ordenes_gt_ataque` |
-| 13 | Domingo | GT-B | 3 cierre | 17:00 | `ordenes_gt_cierre` |
+| 6 | Domingo | GT-A | 0 signup | 21:00 | `ordenes_gt_signup` |
+| 7 | Lunes | GT-A | 1 defensas | 21:00 | `ordenes_gt_defensas` |
+| 8 | Martes | GT-A | 2 ataque | 20:00 | `ordenes_gt_ataque` |
+| 9 | Miércoles | GT-A | 3 cierre | 20:00 | `ordenes_gt_cierre` |
+| 10 | Jueves | GT-B | 0 signup | 20:00 | `ordenes_gt_signup` |
+| 11 | Viernes | GT-B | 1 defensas | 20:00 | `ordenes_gt_defensas` |
+| 12 | Sábado | GT-B | 2 ataque | 19:00 | `ordenes_gt_ataque` |
+| 13 | Domingo | GT-B | 3 cierre | 19:00 | `ordenes_gt_cierre` |
 
 > La fase 3 (cierre/review) **sí se publica**; el contenido depende del template en MongoDB.
 
@@ -192,7 +192,7 @@ El bot registra cada publicación GT en SQLite para evitar duplicados. Si el bot
 
 ### Gap B↔A
 
-No se envía ningún aviso GT entre el cierre de A (miércoles 18:00 hora de España, día 9) y la inscripción de B (jueves 18:00 hora de España, día 10).
+No se envía ningún aviso GT entre el cierre de A (miércoles 20:00 hora de España, día 9) y la inscripción de B (jueves 20:00 hora de España, día 10).
 
 ### Modo manual (fallback)
 
@@ -204,7 +204,7 @@ Con el modo auto detenido, `!set_gt_date YYYY-MM-DD` fija la fecha de inicio y l
 
 Dentro de la ventana las fases siguen el día de la semana: signup (domingo/jueves), defensas (lunes/viernes), ataque (martes/sábado) y cierre (miércoles/domingo).
 
-> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza en cada slot a su **hora fija en hora de España** (19:00 / 18:00 / 17:00 según el día del ciclo).
+> Para crear los documentos en MongoDB usa el script desde el otro bot o directamente desde MongoDB Atlas. La publicación automática de GT se realiza en cada slot a su **hora fija en hora de España** (21:00 / 20:00 / 19:00 según el día del ciclo). El modo manual usa las 20:00 como hora base.
 
 ## Zona horaria y cambio de hora
 
@@ -212,8 +212,8 @@ Todos los horarios de publicación (BT y GT) están anclados a **`Europe/Madrid`
 
 | Época | Zona | BT | GT-A (signup/defensas) | GT-A (ataque/cierre) | GT-B (signup/defensas) | GT-B (ataque/cierre) |
 |-------|------|:--:|:----------------------:|:--------------------:|:----------------------:|:--------------------:|
-| Invierno (CET, UTC+1) | `Europe/Madrid` | 19:00 (18:00 UTC) | 19:00 (18:00 UTC) | 18:00 (17:00 UTC) | 18:00 (17:00 UTC) | 17:00 (16:00 UTC) |
-| Verano (CEST, UTC+2) | `Europe/Madrid` | 19:00 (17:00 UTC) | 19:00 (17:00 UTC) | 18:00 (16:00 UTC) | 18:00 (16:00 UTC) | 17:00 (15:00 UTC) |
+| Invierno (CET, UTC+1) | `Europe/Madrid` | 19:00 (18:00 UTC) | 21:00 (20:00 UTC) | 20:00 (19:00 UTC) | 20:00 (19:00 UTC) | 19:00 (18:00 UTC) |
+| Verano (CEST, UTC+2) | `Europe/Madrid` | 19:00 (17:00 UTC) | 21:00 (19:00 UTC) | 20:00 (18:00 UTC) | 20:00 (18:00 UTC) | 19:00 (17:00 UTC) |
 
 La hora local en España es siempre la misma; lo que cambia es el instante UTC. Esto mantiene el aviso a la misma hora del día para los miembros del gremio todo el año.
 
@@ -228,7 +228,7 @@ El juego sigue anclado a las **10:00 AM hora del Pacífico**. Los cambios de hor
 
 ### Nota operativa sobre los logs
 
-Los logs del sistema suelen estar en **UTC**. Un aviso de las 19:00 hora de España aparecerá en los logs a las **18:00 UTC en invierno** (CET, UTC+1) y a las **17:00 UTC en verano** (CEST, UTC+2). Lo mismo aplica a los slots GT de 18:00 y 17:00. La hora local de publicación no cambia; solo cambia su representación UTC.
+Los logs del sistema suelen estar en **UTC**. Un aviso de las 19:00 hora de España aparecerá en los logs a las **18:00 UTC en invierno** (CET, UTC+1) y a las **17:00 UTC en verano** (CEST, UTC+2). Lo mismo aplica a los slots GT: 21:00 España es 20:00 UTC en invierno y 19:00 UTC en verano; 20:00 España es 19:00/18:00 UTC; y 19:00 España es 18:00/17:00 UTC. La hora local de publicación no cambia; solo cambia su representación UTC.
 
 > `zoneinfo` necesita la base de datos IANA. En Linux suele venir con el sistema; en Windows se instala con la dependencia `tzdata` incluida en `pyproject.toml`.
 
@@ -355,7 +355,7 @@ sudo journalctl -u probe-droid --since "5 min ago"
 
 - `Shard ID None has connected to Gateway`
 - `[INFO] Sonda v5 activa como probe-droid-swgoh-bot#2600`
-- `[INFO] 📅 Scheduler configurado (hora España): recordatorio BT 19:00, GT auto 17/18/19 según fase, GT manual 18:00`
+- `[INFO] 📅 Scheduler configurado (hora España): recordatorio BT 19:00, GT auto 19/20/21 según fase, GT manual 20:00`
 
 **Mensajes normales que NO son errores:**
 

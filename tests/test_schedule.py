@@ -14,9 +14,9 @@ class TestBattleTypesSchedule:
         assert cfg["post_hour"] == 19
         assert cfg["post_minute"] == 0
 
-    def test_gt_post_time_stays_18_spain(self):
+    def test_gt_post_time_is_20_spain(self):
         cfg = bot.BATTLE_TYPES["gt"]
-        assert cfg["post_hour"] == 18
+        assert cfg["post_hour"] == 20
         assert cfg["post_minute"] == 0
 
     def test_all_event_types_have_post_time(self):
@@ -44,16 +44,22 @@ class TestBattleTypesSchedule:
         assert all(trigger.tzinfo == bot.GUILD_TZ for trigger in triggers)
 
     def test_gt_slots_are_spain_hours(self):
-        expected = {6: 19, 7: 19, 8: 18, 9: 18, 10: 18, 11: 18, 12: 17, 13: 17}
+        expected = {6: 21, 7: 21, 8: 20, 9: 20, 10: 20, 11: 20, 12: 19, 13: 19}
         assert bot.GT_SLOT_TIMES == expected
+
+    def test_gt_slot_hours_summary(self):
+        assert bot.gt_slot_hours() == (19, 20, 21)
+
+    def test_gt_slot_labels_cover_all_gt_days(self):
+        assert bot.GT_SLOT_LABELS.keys() == bot.GT_SLOT_TIMES.keys()
 
 
 class TestSchedulerLogLine:
     EXPECTED = (
         "📅 Scheduler configurado (hora España): "
         "recordatorio BT 19:00, "
-        "GT auto 17/18/19 según fase, "
-        "GT manual 18:00"
+        "GT auto 19/20/21 según fase, "
+        "GT manual 20:00"
     )
 
     def test_startup_line_matches_the_agreed_wording(self):
