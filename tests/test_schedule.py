@@ -1,4 +1,5 @@
 from datetime import time
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import bot
@@ -45,3 +46,30 @@ class TestBattleTypesSchedule:
     def test_gt_slots_are_spain_hours(self):
         expected = {6: 19, 7: 19, 8: 18, 9: 18, 10: 18, 11: 18, 12: 17, 13: 17}
         assert bot.GT_SLOT_TIMES == expected
+
+
+class TestSchedulerLogLine:
+    EXPECTED = (
+        "📅 Scheduler configurado (hora España): "
+        "recordatorio BT 19:00, "
+        "GT auto 17/18/19 según fase, "
+        "GT manual 18:00"
+    )
+
+    def test_startup_line_matches_the_agreed_wording(self):
+        assert bot.scheduler_log_line() == self.EXPECTED
+
+    def test_startup_line_uses_spain_time(self):
+        line = bot.scheduler_log_line()
+        assert "hora España" in line
+        assert "UTC" not in line
+
+    async def test_on_ready_logs_the_scheduler_line(self, tmp_db, monkeypatch):
+        logged = []
+        monkeypatch.setattr(bot, "log", SimpleNamespace(info=lambda msg, *args: logged.append(msg)))
+        for loop in (bot.scan_feeds, bot.daily_bt_order, bot.gt_scheduler_loop):
+            monkeypatch.setattr(loop, "is_running", lambda: True)
+
+        await bot.on_ready()
+
+        assert self.EXPECTED in logged
